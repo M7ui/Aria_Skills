@@ -3,6 +3,8 @@
 > AI 音乐创作技能包：**提示词（Skills）+ 工具包（Toolkit）** 一体化封装。
 > Headless 作曲：不依赖 Node 服务器、不调用 LLM API。
 
+[简体中文](README.md) | [English](README.en.md)
+
 ## 特性
 
 - **自然语言作曲**：说一句话，Agent 按五步工作流产出 `song.json` + 标准 MIDI 文件
@@ -22,7 +24,9 @@
 ```
 .agent/
 ├── AGENTS.md              # 跨工具接入门面（支持 AGENTS.md 的工具自动发现）
-├── README.md              # 本文件
+├── README.md              # 中文 README
+├── README.en.md           # 英文 README
+├── LICENSE                # MIT 开源许可
 ├── install.py             # 自安装器：部署到 ~/.agents 供 skills 扫描
 ├── skills/
 │   ├── amr-compose/       # 作曲工作流：自然语言 → song.json → MIDI（含模式库/规则/范例）
@@ -104,6 +108,11 @@ python toolkits/amr-midi/tests/run_tests.py   # 23 个用例全绿
 | 音符不在 0.25 网格上？ | `validate` 非 strict 只警告；加 `--strict` 则视为错误，start_beat/duration 需为 0.25 的整数倍 |
 | 多轨作品 analyze 评分不准？ | 已知限制：analyze 将所有音轨合并统计，会包含伴奏轨，请以旋律轨为主参考 |
 | 修改技能内容不生效？ | 本包由 `skills-source/` 打包生成，改源文件后重新打包；勿直接改本包内容（install.py 除外） |
+
+## 开源许可
+
+本项目基于 **MIT License** 开源，详见 [LICENSE](LICENSE)。
+Copyright (c) 2026 Mark7us
 
 ## 事实源
 
