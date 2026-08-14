@@ -1,0 +1,39 @@
+{
+  "bpm": 120,
+  "tracks": [
+    {
+      "name": "旋律",
+      "channel": 0,
+      "program": 0,
+      "notes": [
+        {"pitch": 67, "start_beat": 0.0, "duration": 0.5, "velocity": 95},
+        {"pitch": 67, "start_beat": 0.75, "duration": 0.25, "velocity": 80},
+        {"pitch": 69, "start_beat": 1.0, "duration": 0.75, "velocity": 105},
+        {"pitch": 72, "start_beat": 2.0, "duration": 0.5, "velocity": 100},
+        {"pitch": 71, "start_beat": 2.75, "duration": 0.5, "velocity": 85},
+        {"pitch": 72, "start_beat": 3.5, "duration": 0.5, "velocity": 90},
+        {"pitch": 67, "start_beat": 4.0, "duration": 0.5, "velocity": 95},
+        {"pitch": 67, "start_beat": 4.75, "duration": 0.25, "velocity": 80},
+        {"pitch": 69, "start_beat": 5.0, "duration": 0.5, "velocity": 105},
+        {"pitch": 74, "start_beat": 5.75, "duration": 0.5, "velocity": 100},
+        {"pitch": 72, "start_beat": 6.5, "duration": 1.0, "velocity": 110},
+        {"pitch": 64, "start_beat": 7.75, "duration": 0.5, "velocity": 75}
+      ]
+    },
+    {
+      "name": "低音",
+      "channel": 1,
+      "program": 32,
+      "notes": [
+        {"pitch": 36, "start_beat": 0.0, "duration": 4.0, "velocity": 90},
+        {"pitch": 43, "start_beat": 4.0, "duration": 4.0, "velocity": 85},
+        {"pitch": 45, "start_beat": 8.0, "duration": 4.0, "velocity": 85},
+        {"pitch": 41, "start_beat": 12.0, "duration": 4.0, "velocity": 85},
+        {"pitch": 36, "start_beat": 16.0, "duration": 4.0, "velocity": 90},
+        {"pitch": 43, "start_beat": 20.0, "duration": 4.0, "velocity": 85},
+        {"pitch": 45, "start_beat": 24.0, "duration": 4.0, "velocity": 85},
+        {"pitch": 41, "start_beat": 28.0, "duration": 4.0, "velocity": 85}
+      ]
+    }
+  ]
+}
