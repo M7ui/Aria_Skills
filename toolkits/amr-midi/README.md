@@ -152,5 +152,5 @@ amr-midi analyze --input song.json --key-root C4 --key-type major  # 含出界�
 ## 测试
 
 ```bash
-python tests/run_tests.py   # 16 个用例：往返一致性 / 校验错误 / 音阶 / 分析
+python tests/run_tests.py   # 23 个用例：往返一致性 / 校验错误 / 音阶 / 分析 / 编码 / BPM 覆盖
 ```
