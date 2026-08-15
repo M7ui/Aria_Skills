@@ -1,4 +1,4 @@
-# AiMidi — Portable Music Skills Pack
+# AMIDI — Portable Music Skills Pack
 
 > An AI music creation skill pack: **Skills (prompts) + Toolkit** in one package.
 > Headless composition: no Node server, no LLM API calls.
@@ -33,11 +33,16 @@
 │   │   └── references/    #   composition-rules / pattern-library / midi-schema / examples
 │   └── amr-music-theory/  # Music theory Q&A: scales/chords/progressions + 5 style references (pop/EDM/jazz/tropical/techniques)
 └── toolkits/
-    └── amr-midi/          # Zero-dependency Python CLI: generate/validate/inspect/scale/analyze
-        ├── amr_midi.py    #   v1.1.0, single file ~865 lines
-        ├── README.md      #   Full CLI documentation
-        ├── tests/         #   23 self-tests (roundtrip/validation/encoding/analysis)
-        └── bin/amr-midi.cmd   # PATH shim
+    ├── amr-midi/          # Zero-dependency Python CLI: generate/validate/inspect/scale/analyze
+    │   ├── amr_midi.py    #   v1.1.0, single file ~865 lines
+    │   ├── README.md      #   Full CLI documentation
+    │   ├── tests/         #   23 self-tests (roundtrip/validation/encoding/analysis)
+    │   └── bin/amr-midi.cmd   # PATH shim
+    └── amr-decode/        # Zero-dependency lossless MIDI → JSON decoder
+        ├── amr_decode.py  #   v1.0.0, single file ~575 lines
+        ├── README.md      #   Full decoder documentation
+        ├── tests/         #   20 cases, 32 assertions
+        └── bin/amr-decode.cmd  # PATH shim
 ```
 
 ## Quick Start
@@ -64,6 +69,17 @@ amr-midi generate --input song.json --output song.mid --bpm 120
 | `scale --root C4 --type major [--list/--chord/--snap/--suggest]` | Scale/chord lookups (13 scales, 14 chords) | 0 / 2 |
 
 All subcommands take JSON in and produce JSON out; `--input -` reads from stdin; `amr-midi --version` shows the version.
+
+## MIDI → JSON Decoding (amr-decode)
+
+Losslessly decodes any `.mid`: every event type (meta / CC / pitch bend / lyrics / SysEx / system messages), PPQN and SMPTE timing, exact second timestamps across tempo changes, plus GM program names / CC controller names / pitch-name mapping.
+
+```bash
+amr-decode decode --input song.mid --output song.json   # full decode (default)
+amr-decode decode --input song.mid --no-events          # quick overview: header + global + notes
+```
+
+Unlike `amr-midi inspect` (lossy — extracts only notes/track names/tempo), amr-decode keeps every event, ideal for reverse engineering, format conversion, and QA. See `toolkits/amr-decode/README.md`.
 
 ## Full Composition Workflow (see the five-step workflow in skills/amr-compose/SKILL.md)
 
@@ -96,7 +112,8 @@ Sample output (validate):
 ## Self-Test
 
 ```bash
-python toolkits/amr-midi/tests/run_tests.py   # all 23 cases pass
+python toolkits/amr-midi/tests/run_tests.py    # all 23 cases pass
+python toolkits/amr-decode/tests/run_tests.py  # all 20 cases / 32 assertions pass
 ```
 
 ## FAQ

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""amr-midi — AiMidi Skills 执行层：零依赖 MIDI 工具包 CLI（仅 Python 标准库）。
+"""amr-midi — AMIDI Skills 执行层：零依赖 MIDI 工具包 CLI（仅 Python 标准库）。
 
 子命令：
   generate   song.json 音符数据 -> 标准 MIDI 文件（Type-1，TPQN=480）
@@ -827,7 +827,7 @@ def normalize_tracks(song, raise_on_error=True):
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="amr-midi",
-        description="AiMidi Skills 执行层：零依赖 MIDI 工具包（generate/validate/inspect/scale/analyze）")
+        description="AMIDI Skills 执行层：零依赖 MIDI 工具包（generate/validate/inspect/scale/analyze）")
     parser.add_argument("--version", action="version", version="amr-midi 1.1.0")
     sub = parser.add_subparsers(dest="cmd", required=True, metavar="<子命令>")
 

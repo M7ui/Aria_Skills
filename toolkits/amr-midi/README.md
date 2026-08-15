@@ -1,4 +1,4 @@
-# amr-midi — AiMidi Skills 执行层 CLI
+# amr-midi — AMIDI Skills 执行层 CLI
 
 零依赖 MIDI 工具包（仅 Python 标准库，Python 3.8+）。任何 Agent 可用 Bash 直接调用：JSON 进、JSON 出，退出码可编程判断。
 

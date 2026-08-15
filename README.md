@@ -1,4 +1,4 @@
-# AiMidi — 便携音乐技能包
+# AMIDI — 便携音乐技能包
 
 > AI 音乐创作技能包：**提示词（Skills）+ 工具包（Toolkit）** 一体化封装。
 > Headless 作曲：不依赖 Node 服务器、不调用 LLM API。
@@ -33,11 +33,16 @@
 │   │   └── references/    #   composition-rules / pattern-library / midi-schema / examples
 │   └── amr-music-theory/  # 乐理问答：音阶/和弦/进行 + 5 大风格知识库（pop/EDM/jazz/tropical/techniques）
 └── toolkits/
-    └── amr-midi/          # 零依赖 Python CLI：generate/validate/inspect/scale/analyze
-        ├── amr_midi.py    #   v1.1.0，单文件 ~865 行
-        ├── README.md      #   CLI 完整文档
-        ├── tests/         #   23 个自测用例（roundtrip/校验/编码/分析）
-        └── bin/amr-midi.cmd   # PATH 垫片
+    ├── amr-midi/          # 零依赖 Python CLI：generate/validate/inspect/scale/analyze
+    │   ├── amr_midi.py    #   v1.1.0，单文件 ~865 行
+    │   ├── README.md      #   CLI 完整文档
+    │   ├── tests/         #   23 个自测用例（roundtrip/校验/编码/分析）
+    │   └── bin/amr-midi.cmd   # PATH 垫片
+    └── amr-decode/        # 零依赖 MIDI → JSON 无损解码器
+        ├── amr_decode.py  #   v1.0.0，单文件 ~575 行
+        ├── README.md      #   解码器完整文档
+        ├── tests/         #   20 个用例 32 项断言
+        └── bin/amr-decode.cmd  # PATH 垫片
 ```
 
 ## 快速使用
@@ -64,6 +69,17 @@ amr-midi generate --input song.json --output song.mid --bpm 120
 | `scale --root C4 --type major [--list/--chord/--snap/--suggest]` | 音阶/和弦计算查表（13 种音阶、14 种和弦） | 0 / 2 |
 
 所有子命令 JSON 进 JSON 出；`--input -` 支持从 stdin 读取；`amr-midi --version` 查看版本。
+
+## MIDI → JSON 解码（amr-decode）
+
+无损解码任意 `.mid`：覆盖全部事件类型（meta/CC/弯音/歌词/SysEx/系统消息）、PPQN 与 SMPTE 双时基、Tempo 变化精确换算秒时间，附 GM 音色名 / CC 控制器名 / 音高名映射。
+
+```bash
+amr-decode decode --input song.mid --output song.json   # 完整解码（默认）
+amr-decode decode --input song.mid --no-events          # 快速概览：头部+全局+音符
+```
+
+与 `amr-midi inspect`（有损，仅提取音符/音轨名/Tempo）不同，amr-decode 保留每一个事件，适合逆向分析、格式转换与质检。详见 `toolkits/amr-decode/README.md`。
 
 ## 完整作曲流程（详见 skills/amr-compose/SKILL.md 五步工作流）
 
@@ -96,7 +112,8 @@ amr-midi inspect  --input song.mid                         # 第 4 步：往返�
 ## 自测
 
 ```bash
-python toolkits/amr-midi/tests/run_tests.py   # 23 个用例全绿
+python toolkits/amr-midi/tests/run_tests.py    # 23 个用例全绿
+python toolkits/amr-decode/tests/run_tests.py  # 20 个用例 32 项断言全绿
 ```
 
 ## 常见问题
@@ -116,5 +133,5 @@ Copyright (c) 2026 Mark7us
 
 ## 事实源
 
-本包由 `D:\Document\AMR\AiMidi-Skills\skills-source\` 打包生成（`package_to_agent.py`）。
+本包由 `D:\Document\AMR\AMIDI-Skills\skills-source\` 打包生成（`package_to_agent.py`）。
 修改技能请回工作区改源文件后重新打包。
