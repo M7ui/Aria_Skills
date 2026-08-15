@@ -1,6 +1,6 @@
 # 完整作曲范例（examples）
 
-三个风格各一例，均可直接作为 song.json 使用。更多风格细节见 `../amr-music-theory/references/styles/`。
+三个风格各一例，均可直接作为 song.json 使用。更多风格细节见 `../aria-music-theory/references/styles/`。
 
 ## 范例 1 — 流行副歌 Hook（8 小节，C 大调，120 BPM，C-G-Am-F）
 

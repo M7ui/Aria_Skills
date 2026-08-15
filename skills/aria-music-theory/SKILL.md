@@ -1,17 +1,17 @@
 ---
-name: amr-music-theory
-description: 音乐理论知识与风格技法问答——音阶、和弦、和弦进行、编曲手法、风格特征（流行/EDM/爵士/Tropical House）的查询与解释。当用户询问"什么是 ii-V-I、布鲁斯音阶有哪些音、怎么写 Drop、如何配和弦、这是什么调式、这段旋律是什么调"等乐理/编曲问题时触发。需要实际产出音乐文件（写歌/生成 MIDI）时改走 amr-compose。
+name: aria-music-theory
+description: 音乐理论知识与风格技法问答——音阶、和弦、和弦进行、编曲手法、风格特征（流行/EDM/爵士/Tropical House）的查询与解释。当用户询问"什么是 ii-V-I、布鲁斯音阶有哪些音、怎么写 Drop、如何配和弦、这是什么调式、这段旋律是什么调"等乐理/编曲问题时触发。需要实际产出音乐文件（写歌/生成 MIDI）时改走 aria-compose。
 metadata:
   version: "1.0.0"
   category: music
-  author: amr
+  author: aria
   requires:
     bins: [python]
 ---
 
-# amr-music-theory — 乐理与风格知识问答
+# aria-music-theory — 乐理与风格知识问答
 
-回答乐理与编曲问题。**知识在 references/styles/ 下，计算用 `amr_midi.py scale` 子命令验证**，不要心算音程与音名。
+回答乐理与编曲问题。**知识在 references/styles/ 下，计算用 `aria_midi.py scale` 子命令验证**，不要心算音程与音名。
 
 ## 知识路由表（先查表，再读文件）
 
@@ -55,14 +55,14 @@ metadata:
 
 ## 用 CLI 计算验证（不要心算）
 
-CLI 定位：优先用 PATH 中的 `amr-midi` 命令；否则用包内相对路径
-`python <本 SKILL.md 所在目录>/../../toolkits/amr-midi/amr_midi.py`（skills/ 与 toolkits/ 同级）。
+CLI 定位：优先用 PATH 中的 `aria-midi` 命令；否则用包内相对路径
+`python <本 SKILL.md 所在目录>/../../toolkits/aria-midi/aria_midi.py`（skills/ 与 toolkits/ 同级）。
 
 ```bash
-amr-midi scale --root C4 --type minor --list          # 列音阶音
-amr-midi scale --root G4 --type major --chord dom7    # 列和弦音
-amr-midi scale --root C4 --type major --snap 61 63 66 # 调式吸附
-amr-midi scale --suggest 60,62,64,65,67,69,71         # 由音高推测调式
+aria-midi scale --root C4 --type minor --list          # 列音阶音
+aria-midi scale --root G4 --type major --chord dom7    # 列和弦音
+aria-midi scale --root C4 --type major --snap 61 63 66 # 调式吸附
+aria-midi scale --suggest 60,62,64,65,67,69,71         # 由音高推测调式
 ```
 
 ## 常见问答模式
@@ -70,14 +70,14 @@ amr-midi scale --suggest 60,62,64,65,67,69,71         # 由音高推测调式
 - **"X 和弦由哪些音组成？"** → 用 `scale --chord` 验证后按「音名 + MIDI 编号」回答
 - **"这段旋律是什么调？"** → 收集音高 → `scale --suggest`，按覆盖率排序给出候选
 - **"某风格有什么特征？"** → 读对应 styles 文件，回答结构（段落/Drop/BPM/配器）
-- **"怎么写好旋律？"** → 讲 techniques.md 的休止/动机/力度，并指向 amr-compose 执行
+- **"怎么写好旋律？"** → 讲 techniques.md 的休止/动机/力度，并指向 aria-compose 执行
 - **音程换算** → 用 `scale --list` / `--chord` 输出 MIDI 编号反推
 
-## 与 amr-compose 的分工
+## 与 aria-compose 的分工
 
 | 场景 | 用哪个 |
 |------|--------|
-| 解释概念、列音阶和弦、分析风格 | 本技能（amr-music-theory） |
-| 用户要"写出来"：生成 song.json / MIDI 文件 | amr-compose（它会按需跨引用本技能的知识库） |
+| 解释概念、列音阶和弦、分析风格 | 本技能（aria-music-theory） |
+| 用户要"写出来"：生成 song.json / MIDI 文件 | aria-compose（它会按需跨引用本技能的知识库） |
 
-回答知识问题时不产出文件；一旦用户意图转向「写/生成音乐」，转交 amr-compose 工作流。
+回答知识问题时不产出文件；一旦用户意图转向「写/生成音乐」，转交 aria-compose 工作流。

@@ -1,17 +1,17 @@
 ---
-name: amr-compose
-description: 自然语言音乐作曲工作流——把旋律、和弦进行、编曲想法写成 song.json 音符数据并生成标准 MIDI 文件。当用户要求"写/创作/生成 一段旋律、一首歌、背景音乐、MIDI、和弦进行、lo-fi、钢琴曲、电子音乐、伴奏"或任何需要产出可播放音乐文件的请求时触发，即使用户没有明说"作曲"二字。纯乐理知识问答（不产出音乐文件）改走 amr-music-theory。
+name: aria-compose
+description: 自然语言音乐作曲工作流——把旋律、和弦进行、编曲想法写成 song.json 音符数据并生成标准 MIDI 文件。当用户要求"写/创作/生成 一段旋律、一首歌、背景音乐、MIDI、和弦进行、lo-fi、钢琴曲、电子音乐、伴奏"或任何需要产出可播放音乐文件的请求时触发，即使用户没有明说"作曲"二字。纯乐理知识问答（不产出音乐文件）改走 aria-music-theory。
 metadata:
   version: "1.0.0"
   category: music
-  author: amr
+  author: aria
   requires:
     bins: [python]
 ---
 
-# amr-compose — 自然语言作曲工作流
+# aria-compose — 自然语言作曲工作流
 
-把用户的音乐想法变成标准 MIDI 文件。**你是作曲家**，`amr_midi.py` CLI 是你的落盘与校验工具。全流程离线运行，零 LLM API 依赖。
+把用户的音乐想法变成标准 MIDI 文件。**你是作曲家**，`aria_midi.py` CLI 是你的落盘与校验工具。全流程离线运行，零 LLM API 依赖。
 
 ## 输出契约（必须全部交付）
 
@@ -21,14 +21,14 @@ metadata:
 
 ## CLI 调用规范
 
-`amr_midi.py` 与本技能同属一个技能包（`skills/` 与 `toolkits/` 同级）。按以下顺序定位：
+`aria_midi.py` 与本技能同属一个技能包（`skills/` 与 `toolkits/` 同级）。按以下顺序定位：
 
-1. 若 PATH 中已有 `amr-midi` 命令：`amr-midi <子命令> [参数]`
-2. 否则用包内相对路径：`python <SKILL.md 所在目录>/../../toolkits/amr-midi/amr_midi.py <子命令> [参数]`
-   （即「技能包根目录下的 toolkits\amr-midi\amr_midi.py」。示例：本技能位于
-   `C:\Users\Mark\.agents\skills\amr-compose\` 时，CLI 即
-   `C:\Users\Mark\.agents\toolkits\amr-midi\amr_midi.py`；
-   位于 `D:\.agent\skills\amr-compose\` 时，CLI 即 `D:\.agent\toolkits\amr-midi\amr_midi.py`）
+1. 若 PATH 中已有 `aria-midi` 命令：`aria-midi <子命令> [参数]`
+2. 否则用包内相对路径：`python <SKILL.md 所在目录>/../../toolkits/aria-midi/aria_midi.py <子命令> [参数]`
+   （即「技能包根目录下的 toolkits\aria-midi\aria_midi.py」。示例：本技能位于
+   `C:\Users\Mark\.agents\skills\aria-compose\` 时，CLI 即
+   `C:\Users\Mark\.agents\toolkits\aria-midi\aria_midi.py`；
+   位于 `D:\.agent\skills\aria-compose\` 时，CLI 即 `D:\.agent\toolkits\aria-midi\aria_midi.py`）
 
 | 子命令 | 用途 | 退出码 |
 |--------|------|--------|
@@ -46,11 +46,11 @@ metadata:
 ### 第 2 步：读知识库（写音符前必读）
 - 先读 `references/composition-rules.md`（段落规范 + 和弦规范 + 7 大规则）
 - 再读 `references/pattern-library.md`（**模式库**：和弦进行配方 / 伴奏织体 / 节奏律动 / 旋律发展技法 / 结构模板 / 情绪参数映射）
-- 按风格读 `../amr-music-theory/references/styles/` 对应文件：流行→`pop-music.md`、电子→`edm-production.md`、爵士→`jazz-improvisation.md`、Tropical House→`tropical-house.md`、通用技巧→`techniques.md`
+- 按风格读 `../aria-music-theory/references/styles/` 对应文件：流行→`pop-music.md`、电子→`edm-production.md`、爵士→`jazz-improvisation.md`、Tropical House→`tropical-house.md`、通用技巧→`techniques.md`
 - 用 CLI 查表，不要心算：
   ```bash
-  amr-midi scale --root C4 --type major --list        # 音阶音
-  amr-midi scale --root G4 --type major --chord dom7  # 和弦音
+  aria-midi scale --root C4 --type major --list        # 音阶音
+  aria-midi scale --root G4 --type major --chord dom7  # 和弦音
   ```
 
 ### 第 3 步：规划结构（套用模式库）
@@ -70,11 +70,11 @@ metadata:
 
 ### 第 5 步：验证 → 生成 → 自检（循环直到达标）
 ```bash
-amr-midi validate --input song.json --strict            # 必须 0 errors
-amr-midi analyze  --input song.json --chords chords.json
+aria-midi validate --input song.json --strict            # 必须 0 errors
+aria-midi analyze  --input song.json --chords chords.json
 # analyze 分数 < 7 或建议未处理 → 按建议修改 song.json，回到第 4 步
-amr-midi generate --input song.json --output song.mid --bpm 120
-amr-midi inspect  --input song.mid                      # 核对音符数/BPM 往返一致
+aria-midi generate --input song.json --output song.mid --bpm 120
+aria-midi inspect  --input song.mid                      # 核对音符数/BPM 往返一致
 ```
 
 ## 作曲规则速查（详版见 references/composition-rules.md）
@@ -140,4 +140,4 @@ amr-midi inspect  --input song.mid                      # 核对音符数/BPM �
 | `references/pattern-library.md` | **规划结构时必读**（进行配方/织体/节奏/旋律技法/结构模板/情绪映射） |
 | `references/midi-schema.md` | 不确定 JSON 字段/约束/GM 音色时 |
 | `references/examples.md` | 需要完整范例参考时 |
-| `../amr-music-theory/references/styles/*.md` | 按风格需要（流行/EDM/爵士/Tropical/通用） |
+| `../aria-music-theory/references/styles/*.md` | 按风格需要（流行/EDM/爵士/Tropical/通用） |

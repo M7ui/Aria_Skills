@@ -28,7 +28,7 @@ def main():
             pass
 
     ok = True
-    for skill in ("amr-compose", "amr-music-theory"):
+    for skill in ("aria-compose", "aria-music-theory"):
         src = ROOT / "skills" / skill
         if not src.exists():
             print(f"[跳过] 缺少 {src}")
@@ -37,7 +37,7 @@ def main():
         mirror(src, AGENTS / "skills" / skill)
         print(f"[安装] skills/{skill} -> {AGENTS / 'skills' / skill}")
 
-    for tk in ("amr-midi",):
+    for tk in ("aria-midi",):
         src = ROOT / "toolkits" / tk
         if not src.exists():
             print(f"[跳过] 缺少 {src}")
@@ -47,7 +47,7 @@ def main():
         print(f"[安装] toolkits/{tk} -> {AGENTS / 'toolkits' / tk}")
 
     print("\n完成。" if ok else "\n部分内容缺失，请检查包完整性。")
-    print(f"提示: 将 {AGENTS / 'toolkits' / 'amr-midi' / 'bin'} 加入 PATH 后可直接使用 amr-midi 命令。")
+    print(f"提示: 将 {AGENTS / 'toolkits' / 'aria-midi' / 'bin'} 加入 PATH 后可直接使用 aria-midi 命令。")
     return 0 if ok else 1
 
 

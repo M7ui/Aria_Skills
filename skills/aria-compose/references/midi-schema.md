@@ -1,6 +1,6 @@
 # song.json / chords.json 数据规范（midi-schema）
 
-`amr_midi.py` 的 `generate` / `validate` / `analyze` 均以以下 JSON 为输入。
+`aria_midi.py` 的 `generate` / `validate` / `analyze` 均以以下 JSON 为输入。
 
 ## song.json — 音符数据
 
@@ -71,7 +71,7 @@
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `root` | int 或音名 | MIDI 编号（60）或音名（"C4"） |
-| `type` | string | 14 种和弦类型（见 amr-music-theory 速查） |
+| `type` | string | 14 种和弦类型（见 aria-music-theory 速查） |
 | `start_beat` | number | 和弦起始拍 |
 | `duration` | number | 和弦持续拍数 |
 

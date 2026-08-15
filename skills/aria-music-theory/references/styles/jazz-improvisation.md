@@ -209,4 +209,4 @@ Target G4: A4(69) → F4(65) → G4(67)
 - **Walking Bass 规则**：四分走步每拍 1.0；第 1 拍=根音、第 2–3 拍=和弦音/音阶音、**第 4 拍=下一和弦的半音/全音经过音**；每隔 1–2 拍上下翻八度防单调
 - **Swing 表达**：0.25 网格无法写三连音 0.667/0.333 → 用 **0.75+0.25** 近似硬 swing/shuffle
 
-完整进行/织体/节奏配方库见 amr-compose 的 references/pattern-library.md。
+完整进行/织体/节奏配方库见 aria-compose 的 references/pattern-library.md。

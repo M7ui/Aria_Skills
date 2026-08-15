@@ -188,4 +188,4 @@ Breakdown 用长音 sus 和弦挂起（Csus2 = 60,62,67 持续 2–4 小节）�
 | Drop | 16–32 | 60–72 lead hook | 100–127 | ★★★★★ | 全鼓 + bass + lead |
 | Outro | 8–16 | 渐弱 | 100→50 | ★★→★ | 逐层抽离 |
 
-完整进行/织体/节奏配方库见 amr-compose 的 references/pattern-library.md。
+完整进行/织体/节奏配方库见 aria-compose 的 references/pattern-library.md。

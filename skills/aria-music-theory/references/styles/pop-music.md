@@ -225,4 +225,4 @@ Bass:   C2   .    D2   .    E2   .    G2   .
 | Final chorus | 8–16 | 67–74 | 100–127 | ★★★★★（可升半音/全音） |
 | Outro | 4–8 | 60–67 | 渐弱 90→50 | ★ |
 
-完整进行/织体/节奏配方库见 amr-compose 的 references/pattern-library.md。
+完整进行/织体/节奏配方库见 aria-compose 的 references/pattern-library.md。

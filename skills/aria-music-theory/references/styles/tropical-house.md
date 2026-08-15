@@ -233,4 +233,4 @@ Intro: 20% → Verse: 40% → Build-up: 40-80% → Drop: 90% → Breakdown: 30% 
 
 Intro 4 → Loop A ×2（主循环 8+8）→ Loop B（换进行或加 9 音，8）→ Loop A'（回归）→ Outro 4；能量平稳中带跳跃，drop 不是必须。
 
-完整进行/织体/节奏配方库见 amr-compose 的 references/pattern-library.md。
+完整进行/织体/节奏配方库见 aria-compose 的 references/pattern-library.md。

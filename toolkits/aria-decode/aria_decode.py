@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AMIDI 技能包 — amr-decode 解码工具（v1.0.0）
+Aria 技能包 — aria-decode 解码工具（v1.0.0）
 
 零依赖 MIDI → JSON 无损解码器（仅 Python 标准库，Python 3.8+）。
 
@@ -14,7 +14,7 @@ AMIDI 技能包 — amr-decode 解码工具（v1.0.0）
   - JSON 进出，退出码：0=成功 / 1=数据错误 / 2=用法错误
 
 用法：
-  python amr_decode.py decode --input <file.mid> [--output <file.json>] [--no-events] [--no-notes]
+  python aria_decode.py decode --input <file.mid> [--output <file.json>] [--no-events] [--no-notes]
 
 CLI 定位规则：本文件可按包内相对路径定位（复制到任何目录均可直接运行）。
 """
@@ -475,7 +475,7 @@ def decode_midi(data, include_events=True, include_notes=True, file_name=None):
     result = {
         "ok": True,
         "file": file_name,
-        "decoder": f"amr-decode {__version__}",
+        "decoder": f"aria-decode {__version__}",
         "header": header,
         "global": global_data,
         "tracks": tracks,
@@ -538,9 +538,9 @@ def cmd_decode(args):
 
 def build_parser():
     p = argparse.ArgumentParser(
-        prog="amr-decode",
-        description="AMIDI 技能包 — 零依赖 MIDI → JSON 无损解码器")
-    p.add_argument("--version", action="version", version=f"amr-decode {__version__}")
+        prog="aria-decode",
+        description="Aria 技能包 — 零依赖 MIDI → JSON 无损解码器")
+    p.add_argument("--version", action="version", version=f"aria-decode {__version__}")
     sub = p.add_subparsers(dest="command", metavar="<子命令>")
 
     d = sub.add_parser("decode", help="解码 .mid → JSON（默认输出全部事件与音符汇总）")

@@ -1,11 +1,11 @@
-# amr-midi — AMIDI Skills 执行层 CLI
+# aria-midi — Aria Skills 执行层 CLI
 
 零依赖 MIDI 工具包（仅 Python 标准库，Python 3.8+）。任何 Agent 可用 Bash 直接调用：JSON 进、JSON 出，退出码可编程判断。
 
 ```bash
-python amr_midi.py <子命令> [参数]
+python aria_midi.py <子命令> [参数]
 # 部署后可用 PATH 垫片（由 sync_to_agents.py 生成）：
-amr-midi <子命令> [参数]
+aria-midi <子命令> [参数]
 ```
 
 ## 子命令
@@ -23,8 +23,8 @@ amr-midi <子命令> [参数]
 ## generate
 
 ```bash
-amr-midi generate --input song.json --output song.mid --bpm 120
-amr-midi generate --input song.json --output song.mid --name-encoding gbk
+aria-midi generate --input song.json --output song.mid --bpm 120
+aria-midi generate --input song.json --output song.mid --name-encoding gbk
 ```
 
 - 输入：`song.json`（见下方 Schema）；`--bpm` **覆盖**文件内 bpm（40–300），不传则用文件值
@@ -37,8 +37,8 @@ amr-midi generate --input song.json --output song.mid --name-encoding gbk
 ## validate
 
 ```bash
-amr-midi validate --input song.json            # 量化越界只警告
-amr-midi validate --input song.json --strict   # 量化越界视为错误
+aria-midi validate --input song.json            # 量化越界只警告
+aria-midi validate --input song.json --strict   # 量化越界视为错误
 ```
 
 检查项：
@@ -61,7 +61,7 @@ amr-midi validate --input song.json --strict   # 量化越界视为错误
 ## inspect
 
 ```bash
-amr-midi inspect --input song.mid
+aria-midi inspect --input song.mid
 ```
 
 - 零依赖 MIDI 解析器：支持 running status、`0x9n vel=0` 记法、Tempo/音轨名/拍号 meta、SysEx 跳过
@@ -85,10 +85,10 @@ amr-midi inspect --input song.mid
 ## scale
 
 ```bash
-amr-midi scale --root C4 --type major --list                 # 列音阶音
-amr-midi scale --root G4 --type major --chord dom7           # 列和弦音
-amr-midi scale --root C4 --type major --snap 61 63 66        # 音高吸附到音阶
-amr-midi scale --suggest 60,62,64,65,67,69,71                # 由音高推测调式
+aria-midi scale --root C4 --type major --list                 # 列音阶音
+aria-midi scale --root G4 --type major --chord dom7           # 列和弦音
+aria-midi scale --root C4 --type major --snap 61 63 66        # 音高吸附到音阶
+aria-midi scale --suggest 60,62,64,65,67,69,71                # 由音高推测调式
 ```
 
 - `--root` 接受音名（"C4"、"F#3"、"Bb2"）或 MIDI 数字；`--type` 13 种音阶；`--chord` 14 种和弦
@@ -98,9 +98,9 @@ amr-midi scale --suggest 60,62,64,65,67,69,71                # 由音高推测�
 ## analyze
 
 ```bash
-amr-midi analyze --input song.json                      # 基础分析
-amr-midi analyze --input song.json --chords chords.json  # 含强拍和弦音匹配率
-amr-midi analyze --input song.json --key-root C4 --key-type major  # 含出界音符检查
+aria-midi analyze --input song.json                      # 基础分析
+aria-midi analyze --input song.json --chords chords.json  # 含强拍和弦音匹配率
+aria-midi analyze --input song.json --key-root C4 --key-type major  # 含出界音符检查
 ```
 
 评分维度（0–10）：**强拍(第1、3拍)和弦音匹配率**（≤2 分，规则 2 核心指标；无和弦定义时退回全音符匹配率）、时值多样性（≤2 分）、力度动态范围（≤1 分）、呼吸空间（≤1 分）、基础分 5。

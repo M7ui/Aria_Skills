@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""amr_midi.py 冒烟测试（stdlib unittest + subprocess，无第三方依赖）。
+"""aria_midi.py 冒烟测试（stdlib unittest + subprocess，无第三方依赖）。
 
-运行：python tests/run_tests.py（从 amr-midi 目录）
+运行：python tests/run_tests.py（从 aria-midi 目录）
 """
 
 import json
@@ -12,8 +12,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent  # amr-midi 目录
-CLI = ROOT / "amr_midi.py"
+ROOT = Path(__file__).resolve().parent.parent  # aria-midi 目录
+CLI = ROOT / "aria_midi.py"
 FIXTURE = Path(__file__).resolve().parent / "sample-song.json"
 
 

@@ -434,4 +434,4 @@ Section 4: chorus (8 bars) — all tracks
 - **力度分层**：第 1 拍 100、第 3 拍 90、第 2/4 拍 80、反拍 70、ghost 40
 - **Ghost note**：力度 25–45、时值 0.25，插在重音之间
 
-完整进行/织体/节奏配方库见 amr-compose 的 references/pattern-library.md。
+完整进行/织体/节奏配方库见 aria-compose 的 references/pattern-library.md。

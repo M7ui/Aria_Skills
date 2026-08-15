@@ -1,11 +1,11 @@
-# amr-decode — 零依赖 MIDI → JSON 无损解码器
+# aria-decode — 零依赖 MIDI → JSON 无损解码器
 
-AMIDI 技能包子工具：把任意 `.mid` 文件**无损解码**为结构化 JSON，覆盖全部 MIDI 事件类型。仅 Python 标准库（3.8+），可复制到任何目录直接运行。
+Aria 技能包子工具：把任意 `.mid` 文件**无损解码**为结构化 JSON，覆盖全部 MIDI 事件类型。仅 Python 标准库（3.8+），可复制到任何目录直接运行。
 
 ```
-python <本包目录>/amr_decode.py decode --input <file.mid> [--output <file.json>] [--no-events] [--no-notes]
+python <本包目录>/aria_decode.py decode --input <file.mid> [--output <file.json>] [--no-events] [--no-notes]
 # 或把 bin 加入 PATH 后直接：
-amr-decode decode --input song.mid
+aria-decode decode --input song.mid
 ```
 
 ## 特性
@@ -19,15 +19,15 @@ amr-decode decode --input song.mid
 | 中文编码 | 音轨名/歌词 GBK/Big5/Shift-JIS/UTF-8 逐级回退解码 |
 | JSON 进出 | 退出码 0=成功 / 1=数据错误 / 2=用法错误 |
 
-## 与 amr-midi inspect 的区别
+## 与 aria-midi inspect 的区别
 
-- `amr-midi inspect`：**有损**——只提取音符/音轨名/Program/Tempo/拍号，丢弃通道、CC、弯音、歌词等细节，且不支持 SMPTE。
-- `amr-decode`：**无损**——保留每一个事件的类型与数据，另附跨轨音符汇总，适合逆向分析、格式转换、质检。
+- `aria-midi inspect`：**有损**——只提取音符/音轨名/Program/Tempo/拍号，丢弃通道、CC、弯音、歌词等细节，且不支持 SMPTE。
+- `aria-decode`：**无损**——保留每一个事件的类型与数据，另附跨轨音符汇总，适合逆向分析、格式转换、质检。
 
 ## 用法
 
 ```
-amr-decode decode --input <file.mid> [--output <file.json>] [--no-events] [--no-notes]
+aria-decode decode --input <file.mid> [--output <file.json>] [--no-events] [--no-notes]
 ```
 
 | 选项 | 说明 |
@@ -42,17 +42,17 @@ amr-decode decode --input <file.mid> [--output <file.json>] [--no-events] [--no-
 
 ```bash
 # 完整解码（默认）
-amr-decode decode --input song.mid
+aria-decode decode --input song.mid
 
 # 快速概览：仅头部 + 全局 + 音符
-amr-decode decode --input song.mid --no-events
+aria-decode decode --input song.mid --no-events
 
 # 只留事件明细
-amr-decode decode --input song.mid --no-notes
+aria-decode decode --input song.mid --no-notes
 
 # 写文件 + stdin 管道
-amr-decode decode --input song.mid --output song.json
-cat song.mid | amr-decode decode --input - > song.json
+aria-decode decode --input song.mid --output song.json
+cat song.mid | aria-decode decode --input - > song.json
 ```
 
 ## 输出结构
@@ -61,7 +61,7 @@ cat song.mid | amr-decode decode --input - > song.json
 {
   "ok": true,
   "file": "song.mid",
-  "decoder": "amr-decode 1.0.0",
+  "decoder": "aria-decode 1.0.0",
   "header": { "format": 1, "track_count": 3, "division_type": "tpqn", "tpqn": 480 },
   "global": {
     "bpm": 120.0, "time_signature": "4/4", "key_signature": null,

@@ -1,4 +1,4 @@
-# AMIDI — Portable Music Skills Pack
+# Aria — Portable Music Skills Pack
 
 > An AI music creation skill pack: **Skills (prompts) + Toolkit** in one package.
 > Headless composition: no Node server, no LLM API calls.
@@ -29,20 +29,20 @@
 ├── LICENSE                # MIT License
 ├── install.py             # Self-installer: deploys to ~/.agents for skills scanning
 ├── skills/
-│   ├── amr-compose/       # Composition workflow: natural language → song.json → MIDI (pattern library / rules / examples)
+│   ├── aria-compose/       # Composition workflow: natural language → song.json → MIDI (pattern library / rules / examples)
 │   │   └── references/    #   composition-rules / pattern-library / midi-schema / examples
-│   └── amr-music-theory/  # Music theory Q&A: scales/chords/progressions + 5 style references (pop/EDM/jazz/tropical/techniques)
+│   └── aria-music-theory/  # Music theory Q&A: scales/chords/progressions + 5 style references (pop/EDM/jazz/tropical/techniques)
 └── toolkits/
-    ├── amr-midi/          # Zero-dependency Python CLI: generate/validate/inspect/scale/analyze
-    │   ├── amr_midi.py    #   v1.1.0, single file ~865 lines
+    ├── aria-midi/          # Zero-dependency Python CLI: generate/validate/inspect/scale/analyze
+    │   ├── aria_midi.py    #   v1.1.0, single file ~865 lines
     │   ├── README.md      #   Full CLI documentation
     │   ├── tests/         #   23 self-tests (roundtrip/validation/encoding/analysis)
-    │   └── bin/amr-midi.cmd   # PATH shim
-    └── amr-decode/        # Zero-dependency lossless MIDI → JSON decoder
-        ├── amr_decode.py  #   v1.0.0, single file ~575 lines
+    │   └── bin/aria-midi.cmd   # PATH shim
+    └── aria-decode/        # Zero-dependency lossless MIDI → JSON decoder
+        ├── aria_decode.py  #   v1.0.0, single file ~575 lines
         ├── README.md      #   Full decoder documentation
         ├── tests/         #   20 cases, 32 assertions
-        └── bin/amr-decode.cmd  # PATH shim
+        └── bin/aria-decode.cmd  # PATH shim
 ```
 
 ## Architecture
@@ -52,13 +52,13 @@ flowchart TB
     User[User: one sentence] --> Agent[Agent tool<br/>reads SKILL.md prompts]
 
     subgraph Skills[Skill layer · prompts]
-        Compose[amr-compose<br/>composition workflow]
-        Theory[amr-music-theory<br/>music theory Q&A]
+        Compose[aria-compose<br/>composition workflow]
+        Theory[aria-music-theory<br/>music theory Q&A]
     end
 
     subgraph Toolkit[Toolkit layer · zero-dependency Python CLI]
-        Midi[amr-midi<br/>validate · analyze · generate · inspect · scale]
-        Decode[amr-decode<br/>lossless MIDI → JSON]
+        Midi[aria-midi<br/>validate · analyze · generate · inspect · scale]
+        Decode[aria-decode<br/>lossless MIDI → JSON]
     end
 
     subgraph Output[Artifacts]
@@ -77,7 +77,7 @@ flowchart TB
     Decode --> MidiJson
 ```
 
-Flow: one user sentence → the Agent drives the tools via skill prompts → the zero-dependency CLI computes in the toolkit layer → produces `song.json` and a standard MIDI file; `amr-decode` losslessly decodes any `.mid` back into JSON for reverse engineering / QA.
+Flow: one user sentence → the Agent drives the tools via skill prompts → the zero-dependency CLI computes in the toolkit layer → produces `song.json` and a standard MIDI file; `aria-decode` losslessly decodes any `.mid` back into JSON for reverse engineering / QA.
 
 ## Quick Start
 
@@ -86,10 +86,10 @@ Flow: one user sentence → the Agent drives the tools via skill prompts → the
 python install.py
 
 # 2. Use the CLI directly (zero installation)
-python toolkits/amr-midi/amr_midi.py scale --root C4 --type major --list
+python toolkits/aria-midi/aria_midi.py scale --root C4 --type major --list
 
 # 3. Or add to PATH and use the short command
-amr-midi generate --input song.json --output song.mid --bpm 120
+aria-midi generate --input song.json --output song.mid --bpm 120
 ```
 
 ## CLI Subcommand Reference
@@ -102,26 +102,26 @@ amr-midi generate --input song.json --output song.mid --bpm 120
 | `inspect --input song.mid` | Parse a .mid back to JSON for self-check | 0 / 1 |
 | `scale --root C4 --type major [--list/--chord/--snap/--suggest]` | Scale/chord lookups (13 scales, 14 chords) | 0 / 2 |
 
-All subcommands take JSON in and produce JSON out; `--input -` reads from stdin; `amr-midi --version` shows the version.
+All subcommands take JSON in and produce JSON out; `--input -` reads from stdin; `aria-midi --version` shows the version.
 
-## MIDI → JSON Decoding (amr-decode)
+## MIDI → JSON Decoding (aria-decode)
 
 Losslessly decodes any `.mid`: every event type (meta / CC / pitch bend / lyrics / SysEx / system messages), PPQN and SMPTE timing, exact second timestamps across tempo changes, plus GM program names / CC controller names / pitch-name mapping.
 
 ```bash
-amr-decode decode --input song.mid --output song.json   # full decode (default)
-amr-decode decode --input song.mid --no-events          # quick overview: header + global + notes
+aria-decode decode --input song.mid --output song.json   # full decode (default)
+aria-decode decode --input song.mid --no-events          # quick overview: header + global + notes
 ```
 
-Unlike `amr-midi inspect` (lossy — extracts only notes/track names/tempo), amr-decode keeps every event, ideal for reverse engineering, format conversion, and QA. See `toolkits/amr-decode/README.md`.
+Unlike `aria-midi inspect` (lossy — extracts only notes/track names/tempo), aria-decode keeps every event, ideal for reverse engineering, format conversion, and QA. See `toolkits/aria-decode/README.md`.
 
-## Full Composition Workflow (see the five-step workflow in skills/amr-compose/SKILL.md)
+## Full Composition Workflow (see the five-step workflow in skills/aria-compose/SKILL.md)
 
 ```bash
-amr-midi validate --input song.json --strict   # Step 1: must have 0 errors
-amr-midi analyze  --input song.json --chords chords.json   # Step 2: score ≥ 7
-amr-midi generate --input song.json --output song.mid      # Step 3: generate MIDI
-amr-midi inspect  --input song.mid                         # Step 4: roundtrip self-check
+aria-midi validate --input song.json --strict   # Step 1: must have 0 errors
+aria-midi analyze  --input song.json --chords chords.json   # Step 2: score ≥ 7
+aria-midi generate --input song.json --output song.mid      # Step 3: generate MIDI
+aria-midi inspect  --input song.mid                         # Step 4: roundtrip self-check
 ```
 
 Sample output (validate):
@@ -139,15 +139,15 @@ Sample output (validate):
 
 | Scenario | What to use |
 |----------|-------------|
-| Write/generate melodies, songs, MIDI, chord progressions | Read `skills/amr-compose/SKILL.md` and follow the five-step workflow |
-| Music theory/arrangement Q&A | Read `skills/amr-music-theory/SKILL.md` |
-| CLI only, no prompts needed | Call directly per `toolkits/amr-midi/README.md` |
+| Write/generate melodies, songs, MIDI, chord progressions | Read `skills/aria-compose/SKILL.md` and follow the five-step workflow |
+| Music theory/arrangement Q&A | Read `skills/aria-music-theory/SKILL.md` |
+| CLI only, no prompts needed | Call directly per `toolkits/aria-midi/README.md` |
 
 ## Self-Test
 
 ```bash
-python toolkits/amr-midi/tests/run_tests.py    # all 23 cases pass
-python toolkits/amr-decode/tests/run_tests.py  # all 20 cases / 32 assertions pass
+python toolkits/aria-midi/tests/run_tests.py    # all 23 cases pass
+python toolkits/aria-decode/tests/run_tests.py  # all 20 cases / 32 assertions pass
 ```
 
 ## FAQ
