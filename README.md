@@ -45,6 +45,40 @@
         └── bin/amr-decode.cmd  # PATH 垫片
 ```
 
+## 架构
+
+```mermaid
+flowchart TB
+    User[用户一句话] --> Agent[Agent 工具<br/>读取 SKILL.md 提示词]
+
+    subgraph Skills[技能层 · 提示词]
+        Compose[amr-compose<br/>作曲工作流]
+        Theory[amr-music-theory<br/>乐理问答]
+    end
+
+    subgraph Toolkit[工具层 · 零依赖 Python CLI]
+        Midi[amr-midi<br/>validate · analyze · generate · inspect · scale]
+        Decode[amr-decode<br/>MIDI → JSON 无损解码]
+    end
+
+    subgraph Output[产物]
+        Song[song.json 音符数据]
+        MidiFile[(song.mid 标准 MIDI)]
+        MidiJson[MIDI JSON]
+    end
+
+    Agent --> Compose
+    Agent --> Theory
+    Compose -->|五步工作流| Midi
+    Theory -->|音阶/和弦查表| Midi
+    Midi -->|校验/评分| Song
+    Midi -->|生成| MidiFile
+    MidiFile --> Decode
+    Decode --> MidiJson
+```
+
+流程：用户一句话 → Agent 按技能提示词驱动 → 工具层零依赖 CLI 计算 → 产出 song.json 与标准 MIDI；`amr-decode` 可把任意 `.mid` 无损解码回 JSON 供逆向分析/质检。
+
 ## 快速使用
 
 ```bash

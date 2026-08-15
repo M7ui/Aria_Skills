@@ -45,6 +45,40 @@
         └── bin/amr-decode.cmd  # PATH shim
 ```
 
+## Architecture
+
+```mermaid
+flowchart TB
+    User[User: one sentence] --> Agent[Agent tool<br/>reads SKILL.md prompts]
+
+    subgraph Skills[Skill layer · prompts]
+        Compose[amr-compose<br/>composition workflow]
+        Theory[amr-music-theory<br/>music theory Q&A]
+    end
+
+    subgraph Toolkit[Toolkit layer · zero-dependency Python CLI]
+        Midi[amr-midi<br/>validate · analyze · generate · inspect · scale]
+        Decode[amr-decode<br/>lossless MIDI → JSON]
+    end
+
+    subgraph Output[Artifacts]
+        Song[song.json note data]
+        MidiFile[(song.mid standard MIDI)]
+        MidiJson[MIDI JSON]
+    end
+
+    Agent --> Compose
+    Agent --> Theory
+    Compose -->|five-step workflow| Midi
+    Theory -->|scale/chord lookups| Midi
+    Midi -->|validate / analyze| Song
+    Midi -->|generate| MidiFile
+    MidiFile --> Decode
+    Decode --> MidiJson
+```
+
+Flow: one user sentence → the Agent drives the tools via skill prompts → the zero-dependency CLI computes in the toolkit layer → produces `song.json` and a standard MIDI file; `amr-decode` losslessly decodes any `.mid` back into JSON for reverse engineering / QA.
+
 ## Quick Start
 
 ```bash
