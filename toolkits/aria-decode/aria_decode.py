@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Aria 技能包 — aria-decode 解码工具（v1.0.0）
+Aria 技能包 — aria-decode 解码工具（v1.0.1）
 
 零依赖 MIDI → JSON 无损解码器（仅 Python 标准库，Python 3.8+）。
 
@@ -24,8 +24,9 @@ import json
 import struct
 import sys
 import os
+from bisect import bisect_right
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 # ══════════════════════════════════════════════════════════════
 # 常量表
@@ -139,6 +140,43 @@ def _hexdump(payload):
     return payload.hex().upper()
 
 
+def _build_tempo_table(entries, default_spb):
+    """把 (tick, 秒/tick) 事件整理成可二分查询的时间轴。
+
+    同一 tick 的 Tempo 事件后者覆盖前者；返回 (ticks, spbs, times)，
+    times[i] 是 ticks[i] 处的累计秒数，spbs[i] 从 ticks[i] 起生效。
+    """
+    effective = {}
+    for tick, spb in entries:
+        effective[tick] = spb
+
+    ticks = [0]
+    spbs = [default_spb]
+    times = [0.0]
+    prev_tick = 0
+    prev_spb = default_spb
+
+    for tick, spb in sorted(effective.items()):
+        if tick == prev_tick:
+            spbs[-1] = spb
+            prev_spb = spb
+            continue
+        if tick < prev_tick:
+            continue
+        times.append(times[-1] + (tick - prev_tick) * prev_spb)
+        ticks.append(tick)
+        spbs.append(spb)
+        prev_tick = tick
+        prev_spb = spb
+    return ticks, spbs, times
+
+
+def _sec_at_tick(ticks, spbs, times, tick):
+    """按全局 Tempo 时间轴把绝对 tick 换算为秒。"""
+    i = bisect_right(ticks, tick) - 1
+    return times[i] + (tick - ticks[i]) * spbs[i]
+
+
 # ══════════════════════════════════════════════════════════════
 # 核心解码器
 # ══════════════════════════════════════════════════════════════
@@ -173,8 +211,9 @@ def decode_midi(data, include_events=True, include_notes=True, file_name=None):
                   "division_type": "tpqn", "tpqn": tpqn}
         sec_per_tick = None  # 由 tempo 事件决定
 
-    # 全局 tempo 状态（跨轨共享）：PPQN 默认 120 BPM，tempo 事件更新
-    global_tick_sec = sec_per_tick if division_type == "smpte" else 0.5 / (tpqn or 480)
+    # PPQN 默认 120 BPM；Tempo 事件统一收集为全局时间轴，跨轨精确换算
+    default_spb = sec_per_tick if division_type == "smpte" else 0.5 / (tpqn or 480)
+    tempo_entries = []
 
     pos = 8 + header_len
     warnings = []
@@ -184,7 +223,6 @@ def decode_midi(data, include_events=True, include_notes=True, file_name=None):
     global_time_sig = None
     global_key_sig = None
     last_tick = 0
-    last_sec = 0.0
 
     for ti in range(ntrks):
         if pos + 8 > len(data) or data[pos:pos + 4] != b"MTrk":
@@ -194,12 +232,10 @@ def decode_midi(data, include_events=True, include_notes=True, file_name=None):
         end = min(pos + track_len, len(data))
 
         abs_tick = 0
-        cur_sec = 0.0
-        tick_sec = global_tick_sec  # 继承全局 tempo 状态（tempo 可能只在轨 0）
         running = None
 
         events = []
-        pending = {}  # (channel, pitch) -> deque[(start_tick, start_sec, vel)]
+        pending = {}  # (channel, pitch) -> deque[(start_tick, vel)]
         track_name = None
         channel_counter = {}
         last_program = None
@@ -208,13 +244,11 @@ def decode_midi(data, include_events=True, include_notes=True, file_name=None):
         while pos < end:
             delta, pos = read_vlq(data, pos, end)
             abs_tick += delta
-            cur_sec += delta * tick_sec
             if abs_tick > last_tick:
                 last_tick = abs_tick
-                last_sec = cur_sec
             b = data[pos]
             pos += 1
-            ev = {"tick": abs_tick, "time": round(cur_sec, 6), "delta": delta}
+            ev = {"tick": abs_tick, "time": None, "delta": delta}
 
             if b == 0xFF:  # Meta 事件
                 if pos >= end:
@@ -268,8 +302,8 @@ def decode_midi(data, include_events=True, include_notes=True, file_name=None):
                 elif meta_type == 0x2F:  # 音轨结束：未闭合音符就地收尾
                     ev["meta"] = "end_of_track"
                     for (ch, p), q in pending.items():
-                        for st_tick, st_sec, vel in q:
-                            all_notes.append(_mk_note(ti, ch, p, st_tick, st_sec, abs_tick - st_tick, vel, cur_sec, tpqn, division_type))
+                        for st_tick, vel in q:
+                            all_notes.append(_mk_note(ti, ch, p, st_tick, abs_tick - st_tick, vel, tpqn))
                     pending.clear()
                 elif meta_type == 0x51 and len(payload) >= 3:  # Tempo
                     us = int.from_bytes(payload[:3], "big")
@@ -279,8 +313,7 @@ def decode_midi(data, include_events=True, include_notes=True, file_name=None):
                         ev["bpm"] = round(bpm, 2)
                         ev["us_per_beat"] = us
                         if division_type == "tpqn":
-                            tick_sec = us / 1_000_000 / tpqn
-                            global_tick_sec = tick_sec
+                            tempo_entries.append((abs_tick, us / 1_000_000 / tpqn))
                         if global_bpm is None:
                             global_bpm = round(bpm, 2)
                 elif meta_type == 0x54:  # SMPTE 偏移
@@ -393,9 +426,9 @@ def decode_midi(data, include_events=True, include_notes=True, file_name=None):
                 ev["velocity"] = d2
                 q = pending.get((ch, d1))
                 if q:
-                    st_tick, st_sec, vel = q.pop(0)
+                    st_tick, vel = q.pop(0)
                     dur = abs_tick - st_tick
-                    all_notes.append(_mk_note(ti, ch, d1, st_tick, st_sec, dur, vel, cur_sec, tpqn, division_type))
+                    all_notes.append(_mk_note(ti, ch, d1, st_tick, dur, vel, tpqn))
             elif msg == 0x90:  # Note-On（vel=0 视作 Note-Off）
                 ev["type"] = "note_on" if d2 > 0 else "note_off"
                 ev["channel"] = ch
@@ -403,13 +436,13 @@ def decode_midi(data, include_events=True, include_notes=True, file_name=None):
                 ev["pitch_name"] = pitch_name(d1)
                 ev["velocity"] = d2
                 if d2 > 0:
-                    pending.setdefault((ch, d1), []).append((abs_tick, cur_sec, d2))
+                    pending.setdefault((ch, d1), []).append((abs_tick, d2))
                 else:
                     q = pending.get((ch, d1))
                     if q:
-                        st_tick, st_sec, vel = q.pop(0)
+                        st_tick, vel = q.pop(0)
                         dur = abs_tick - st_tick
-                        all_notes.append(_mk_note(ti, ch, d1, st_tick, st_sec, dur, vel, cur_sec, tpqn, division_type))
+                        all_notes.append(_mk_note(ti, ch, d1, st_tick, dur, vel, tpqn))
             elif msg == 0xA0:  # Poly Aftertouch
                 ev["type"] = "poly_aftertouch"
                 ev["channel"] = ch
@@ -442,9 +475,9 @@ def decode_midi(data, include_events=True, include_notes=True, file_name=None):
 
         # 轨内未闭合音符（理论不应到达，防御）
         for (ch, p), q in pending.items():
-            for st_tick, st_sec, vel in q:
+            for st_tick, vel in q:
                 warnings.append(f"轨{ti} 音符 {p} 未闭合，强制收尾")
-                all_notes.append(_mk_note(ti, ch, p, st_tick, st_sec, abs_tick - st_tick, vel, cur_sec, tpqn, division_type))
+                all_notes.append(_mk_note(ti, ch, p, st_tick, abs_tick - st_tick, vel, tpqn))
         pending.clear()
 
         last_channel = max(channel_counter, key=channel_counter.get) if channel_counter else None
@@ -459,6 +492,15 @@ def decode_midi(data, include_events=True, include_notes=True, file_name=None):
         if include_events:
             track["events"] = events
         tracks.append(track)
+
+    ticks, spbs, times = _build_tempo_table(tempo_entries, default_spb)
+    for track in tracks:
+        for ev in track.get("events", []):
+            ev["time"] = round(_sec_at_tick(ticks, spbs, times, ev["tick"]), 6)
+    for n in all_notes:
+        n["start_time"] = round(_sec_at_tick(ticks, spbs, times, n["start_tick"]), 6)
+        n["end_time"] = round(_sec_at_tick(ticks, spbs, times, n["end_tick"]), 6)
+    last_sec = _sec_at_tick(ticks, spbs, times, last_tick)
 
     notes = sorted(all_notes, key=lambda n: (n["track"], n["channel"], n["start_tick"], n["pitch"])) if include_notes else []
     if not include_notes:
@@ -486,8 +528,8 @@ def decode_midi(data, include_events=True, include_notes=True, file_name=None):
     return result
 
 
-def _mk_note(track, channel, pitch, st_tick, st_sec, dur_ticks, vel, end_sec, tpqn, division_type):
-    """构造音符对象（含秒时间戳）。"""
+def _mk_note(track, channel, pitch, st_tick, dur_ticks, vel, tpqn):
+    """构造音符对象；秒时间戳由全局 Tempo 时间轴在解码完成后回填。"""
     beat_div = tpqn if tpqn else 480
     return {
         "track": track,
@@ -496,11 +538,11 @@ def _mk_note(track, channel, pitch, st_tick, st_sec, dur_ticks, vel, end_sec, tp
         "pitch_name": pitch_name(pitch),
         "start_tick": st_tick,
         "start_beat": round(st_tick / beat_div, 3),
-        "start_time": round(st_sec, 6),
+        "start_time": None,
         "end_tick": st_tick + dur_ticks,
         "duration_ticks": dur_ticks,
         "duration": round(dur_ticks / beat_div, 3),
-        "end_time": round(end_sec, 6),
+        "end_time": None,
         "velocity": vel,
     }
 
@@ -553,6 +595,12 @@ def build_parser():
 
 
 def main(argv=None):
+    for stream in (sys.stdout, sys.stdin, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
     parser = build_parser()
     args = parser.parse_args(argv)
     if not getattr(args, "handler", None):

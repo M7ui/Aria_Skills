@@ -39,9 +39,9 @@
     │   ├── tests/         #   23 个自测用例（roundtrip/校验/编码/分析）
     │   └── bin/aria-midi.cmd   # PATH 垫片
     └── aria-decode/        # 零依赖 MIDI → JSON 无损解码器
-        ├── aria_decode.py  #   v1.0.0，单文件 ~575 行
+        ├── aria_decode.py  #   v1.0.1，单文件 ~590 行
         ├── README.md      #   解码器完整文档
-        ├── tests/         #   20 个用例 32 项断言
+        ├── tests/         #   22 个用例 35 项断言
         └── bin/aria-decode.cmd  # PATH 垫片
 ```
 
@@ -90,6 +90,9 @@ python toolkits/aria-midi/aria_midi.py scale --root C4 --type major --list
 
 # 3. 或加入 PATH 后用短命令
 aria-midi generate --input song.json --output song.mid --bpm 120
+
+# 4. 逆向解码 MIDI
+aria-decode decode --input song.mid --output song.json
 ```
 
 ## CLI 子命令速查
@@ -106,14 +109,22 @@ aria-midi generate --input song.json --output song.mid --bpm 120
 
 ## MIDI → JSON 解码（aria-decode）
 
-无损解码任意 `.mid`：覆盖全部事件类型（meta/CC/弯音/歌词/SysEx/系统消息）、PPQN 与 SMPTE 双时基、Tempo 变化精确换算秒时间，附 GM 音色名 / CC 控制器名 / 音高名映射。
+`aria-decode` 解决「拿到一个 `.mid` 后，想看清里面到底有什么」的问题：把任意 MIDI 无损解码为结构化 JSON，逆向分析、格式转换与生成后质检都能直接消费。
+
+- **完整事件**：meta / CC / 弯音 / 歌词 / SysEx / 系统消息全部保留，不只提取音符
+- **双时基**：PPQN 与 SMPTE（含 29.97 drop-frame）均支持
+- **精确时间**：Tempo 变化按全局时间轴跨轨换算秒时间，音符含 `start_time` / `end_time`
+- **可读映射**：附 GM 音色名（128 项）、标准 CC 控制器名、音高名（C4 等）
 
 ```bash
-aria-decode decode --input song.mid --output song.json   # 完整解码（默认）
+aria-decode decode --input song.mid                      # 完整解码输出到 stdout
+aria-decode decode --input song.mid --output song.json   # 完整解码写入 JSON 文件
 aria-decode decode --input song.mid --no-events          # 快速概览：头部+全局+音符
+aria-decode decode --input song.mid --no-notes           # 只要事件明细
+cat song.mid | aria-decode decode --input - > song.json  # stdin 管道
 ```
 
-与 `aria-midi inspect`（有损，仅提取音符/音轨名/Tempo）不同，aria-decode 保留每一个事件，适合逆向分析、格式转换与质检。详见 `toolkits/aria-decode/README.md`。
+与 `aria-midi inspect`（有损，仅提取音符/音轨名/Tempo）不同，aria-decode 保留每一个事件。需要检查 Tempo 变化、CC/弯音/歌词、SysEx，或做生成后质检时，优先用 aria-decode。完整命令与输出结构见 `toolkits/aria-decode/README.md`。
 
 ## 完整作曲流程（详见 skills/aria-compose/SKILL.md 五步工作流）
 
@@ -147,7 +158,7 @@ aria-midi inspect  --input song.mid                         # 第 4 步：往返
 
 ```bash
 python toolkits/aria-midi/tests/run_tests.py    # 23 个用例全绿
-python toolkits/aria-decode/tests/run_tests.py  # 20 个用例 32 项断言全绿
+python toolkits/aria-decode/tests/run_tests.py  # 22 个用例 35 项断言全绿
 ```
 
 ## 常见问题

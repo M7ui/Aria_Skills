@@ -61,7 +61,7 @@ def cli(*args, stdin=None):
         p = subprocess.run([sys.executable, TOOL, *args], capture_output=True, input=stdin)
         return p.returncode, p.stdout.decode("utf-8", errors="replace"), p.stderr.decode("utf-8", errors="replace")
     p = subprocess.run([sys.executable, TOOL, *args], capture_output=True,
-                       input=stdin, text=True)
+                       input=stdin, text=True, encoding="utf-8", errors="replace")
     return p.returncode, p.stdout, p.stderr
 
 
@@ -113,6 +113,19 @@ def test_tempo_time():
     note = [e for e in t1 if e["type"] == "note_on"][0]
     check("tempo 60 换算", tempo_ev["bpm"] == 60.0 and abs(note["time"] - 1.0) < 1e-6,
           json.dumps([tempo_ev, note], ensure_ascii=False))
+
+
+def test_tempo_map_across_tracks():
+    """指挥轨先 120 后 60 BPM：其他轨 0–480 tick 全程按 120 BPM 换算。"""
+    ev = _vlq(0) + _meta(0x51, b"\x07\xa1\x20") + _vlq(480) + _meta(0x51, b"\x0f\x42\x40")
+    note = _vlq(0) + _ch(0x90, 60, 90) + _vlq(480) + _ch(0x80, 60, 0)
+    mid = build_midi(480, _track(ev), _track(note))
+    r = aria_decode.decode_midi(mid)
+    n = r["notes"][0]
+    check("Tempo 跨轨时间轴", abs(n["end_time"] - 0.5) < 1e-6 and abs(n["start_time"]) < 1e-6,
+          json.dumps(n, ensure_ascii=False))
+    check("全局时长按 Tempo 时间轴", abs(r["global"]["duration_sec"] - 0.5) < 1e-6,
+          str(r["global"]))
 
 
 def test_time_signature():
@@ -226,7 +239,7 @@ def test_exit_codes():
     code2, _, _ = cli("decode")
     check("退出码 2（用法错误）", code2 == 2, f"code={code2}")
     code3, out3, _ = cli("--version")
-    check("--version", code3 == 0 and "1.0.0" in out3, out3)
+    check("--version", code3 == 0 and aria_decode.__version__ in out3, out3)
 
 
 def test_stdin():
@@ -235,6 +248,17 @@ def test_stdin():
     code, out, _ = cli("decode", "--input", "-", "--no-events", stdin=mid)
     check("stdin 解码", code == 0 and '"pitch": 72' in out, f"code={code}")
     check("stdin 文件名", '"file": "-"' in out, out[:200])
+
+
+def test_stdout_utf8():
+    """stdout 管道输出必须是 UTF-8，中文音轨名不能出现替换符。"""
+    ev = _vlq(0) + _meta(0x03, "旋律".encode("gbk")) + _vlq(0) + _ch(0x90, 60, 80) + _vlq(120) + _ch(0x80, 60, 0)
+    mid = build_midi(480, _track(ev))
+    write_tmp(mid)
+    p = subprocess.run([sys.executable, TOOL, "decode", "--input", TMP, "--no-events"],
+                       capture_output=True)
+    ok = p.returncode == 0 and '"旋律"'.encode("utf-8") in p.stdout and b"\xef\xbf\xbd" not in p.stdout
+    check("stdout UTF-8", ok, p.stdout[:200])
 
 
 def test_channel_prefix():

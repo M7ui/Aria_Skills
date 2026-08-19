@@ -4,3 +4,6 @@ html/
 # Python 缓存
 __pycache__/
 *.pyc
+
+# 本地测试结果与生成产物
+output/

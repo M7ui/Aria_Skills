@@ -39,9 +39,9 @@
     │   ├── tests/         #   23 self-tests (roundtrip/validation/encoding/analysis)
     │   └── bin/aria-midi.cmd   # PATH shim
     └── aria-decode/        # Zero-dependency lossless MIDI → JSON decoder
-        ├── aria_decode.py  #   v1.0.0, single file ~575 lines
+        ├── aria_decode.py  #   v1.0.1, single file ~590 lines
         ├── README.md      #   Full decoder documentation
-        ├── tests/         #   20 cases, 32 assertions
+        ├── tests/         #   22 cases, 35 assertions
         └── bin/aria-decode.cmd  # PATH shim
 ```
 
@@ -90,6 +90,9 @@ python toolkits/aria-midi/aria_midi.py scale --root C4 --type major --list
 
 # 3. Or add to PATH and use the short command
 aria-midi generate --input song.json --output song.mid --bpm 120
+
+# 4. Reverse-decode a MIDI file
+aria-decode decode --input song.mid --output song.json
 ```
 
 ## CLI Subcommand Reference
@@ -106,14 +109,22 @@ All subcommands take JSON in and produce JSON out; `--input -` reads from stdin;
 
 ## MIDI → JSON Decoding (aria-decode)
 
-Losslessly decodes any `.mid`: every event type (meta / CC / pitch bend / lyrics / SysEx / system messages), PPQN and SMPTE timing, exact second timestamps across tempo changes, plus GM program names / CC controller names / pitch-name mapping.
+`aria-decode` answers "what is actually inside this `.mid`?" by losslessly decoding any MIDI file into structured JSON for reverse engineering, format conversion, and post-generation QA.
+
+- **Every event**: meta / CC / pitch bend / lyrics / SysEx / system messages are kept, not just notes
+- **Dual timing**: both PPQN and SMPTE (including 29.97 drop-frame) are supported
+- **Exact time**: tempo changes are converted to seconds on a global timeline across tracks; notes include `start_time` / `end_time`
+- **Readable mappings**: GM program names (128), standard CC controller names, and pitch names (C4 etc.)
 
 ```bash
-aria-decode decode --input song.mid --output song.json   # full decode (default)
+aria-decode decode --input song.mid                      # full decode to stdout
+aria-decode decode --input song.mid --output song.json   # full decode to a JSON file
 aria-decode decode --input song.mid --no-events          # quick overview: header + global + notes
+aria-decode decode --input song.mid --no-notes           # event details only
+cat song.mid | aria-decode decode --input - > song.json  # stdin pipe
 ```
 
-Unlike `aria-midi inspect` (lossy — extracts only notes/track names/tempo), aria-decode keeps every event, ideal for reverse engineering, format conversion, and QA. See `toolkits/aria-decode/README.md`.
+Unlike `aria-midi inspect` (lossy — extracts only notes/track names/tempo), aria-decode keeps every event. Prefer aria-decode when you need tempo changes, CC/pitch bend/lyrics, SysEx, or post-generation QA. See `toolkits/aria-decode/README.md` for the full command reference and output structure.
 
 ## Full Composition Workflow (see the five-step workflow in skills/aria-compose/SKILL.md)
 
@@ -147,7 +158,7 @@ Sample output (validate):
 
 ```bash
 python toolkits/aria-midi/tests/run_tests.py    # all 23 cases pass
-python toolkits/aria-decode/tests/run_tests.py  # all 20 cases / 32 assertions pass
+python toolkits/aria-decode/tests/run_tests.py  # all 22 cases / 35 assertions pass
 ```
 
 ## FAQ

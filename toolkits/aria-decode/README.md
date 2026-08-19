@@ -1,6 +1,6 @@
 # aria-decode — 零依赖 MIDI → JSON 无损解码器
 
-Aria 技能包子工具：把任意 `.mid` 文件**无损解码**为结构化 JSON，覆盖全部 MIDI 事件类型。仅 Python 标准库（3.8+），可复制到任何目录直接运行。
+Aria 技能包子工具（v1.0.1）：把任意 `.mid` 文件**无损解码**为结构化 JSON，覆盖全部 MIDI 事件类型。仅 Python 标准库（3.8+），可复制到任何目录直接运行。
 
 ```
 python <本包目录>/aria_decode.py decode --input <file.mid> [--output <file.json>] [--no-events] [--no-notes]
@@ -18,6 +18,13 @@ aria-decode decode --input song.mid
 | 人性化字段 | GM 音色名（128）、标准 CC 控制器名、音高名（C4 等）自动映射 |
 | 中文编码 | 音轨名/歌词 GBK/Big5/Shift-JIS/UTF-8 逐级回退解码 |
 | JSON 进出 | 退出码 0=成功 / 1=数据错误 / 2=用法错误 |
+
+## 应用场景
+
+- **逆向分析**：拿到别人导出的 `.mid`，快速看清音轨、通道、音色、Tempo、CC 与弯音是怎么编排的
+- **格式转换/迁移**：MIDI 事件无损落成 JSON 后，可被其他工具、脚本或 Agent 继续处理
+- **生成后质检**：`aria-midi generate` 产出的文件用 `decode` 回读，核对 Tempo/音符/CC 是否与 song.json 一致
+- **事件级调试**：检查歌词、Marker、SysEx、系统消息、拍号/调号等 `inspect` 不保留的细节
 
 ## 与 aria-midi inspect 的区别
 
@@ -61,7 +68,7 @@ cat song.mid | aria-decode decode --input - > song.json
 {
   "ok": true,
   "file": "song.mid",
-  "decoder": "aria-decode 1.0.0",
+  "decoder": "aria-decode 1.0.1",
   "header": { "format": 1, "track_count": 3, "division_type": "tpqn", "tpqn": 480 },
   "global": {
     "bpm": 120.0, "time_signature": "4/4", "key_signature": null,
@@ -117,7 +124,7 @@ cat song.mid | aria-decode decode --input - > song.json
 python tests/run_tests.py
 ```
 
-20 个用例 32 项断言：事件解码、running status、vel=0 记法、重叠音符、Tempo 换算、SMPTE（24/30fps）、GBK 音轨名、歌词/Marker、退出码、stdin、`--no-events`/`--no-notes`、SysEx 等。
+22 个用例 35 项断言：事件解码、running status、vel=0 记法、重叠音符、Tempo 跨轨时间轴、SMPTE（24/30fps）、GBK 音轨名、歌词/Marker、退出码、stdin、UTF-8 stdout、`--no-events`/`--no-notes`、SysEx 等。
 
 ## 已知限制
 

@@ -26,24 +26,30 @@ aria-midi <子命令> [参数]
 
 ### aria-decode — MIDI → JSON 无损解码器
 
-零依赖 Python CLI（仅标准库，Python 3.8+）：`decode`。无损解码全部 MIDI 事件（meta/CC/弯音/歌词/SysEx/系统消息），PPQN 与 SMPTE 双时基，JSON 进出，退出码契约同 aria-midi。
+把任意 `.mid` 无损解码为结构化 JSON，用于逆向分析、格式转换与生成后质检。保留全部事件（meta/CC/弯音/歌词/SysEx/系统消息），支持 PPQN 与 SMPTE 双时基，Tempo 变化按全局时间轴换算秒时间，附 GM 音色名 / CC 控制器名 / 音高名映射。`aria-midi inspect` 只提取音符/音轨名/Tempo，需要完整事件时改用本工具。
+
+零依赖 Python CLI（仅标准库，Python 3.8+）：`decode`。JSON 进出，退出码契约同 aria-midi。
 
 ```
 python <本包目录>/toolkits/aria-decode/aria_decode.py decode --input <file.mid> [--output <file.json>] [--no-events] [--no-notes]
 # 或把 toolkits/aria-decode/bin 加入 PATH 后直接：
 aria-decode decode --input song.mid
+aria-decode decode --input song.mid --no-events   # 快速概览：头部+全局+音符
+aria-decode decode --input song.mid --no-notes    # 只要事件明细
 ```
 
 ## 三种使用方式
 
 1. **自动发现**（支持 skills 扫描的工具，如 ZCode/Claude Code）：运行本包内 `python install.py`，把 skills 与 toolkits 部署到 `~/.agents/` 即可被扫描加载。
 2. **显式加载**（任何工具）：让 Agent 读取 `skills/aria-compose/SKILL.md`，按其五步工作流执行；SKILL.md 内的 CLI 定位规则已按包内相对路径设计，复制到任何目录都有效。
-3. **仅用 CLI**：不需要提示词时，按 `toolkits/aria-midi/README.md` 直接调命令行。
+3. **仅用 CLI**：不需要提示词时，按 `toolkits/aria-midi/README.md` 或 `toolkits/aria-decode/README.md` 直接调命令行。
 
 ## 快速开始
 
 用户说「写一段 C 大调流行旋律」→ 读 aria-compose SKILL.md → 五步工作流：
 `validate --strict` → `analyze` → `generate` → `inspect` → 交付 song.json + song.mid + 摘要。
+
+用户说「把 song.mid 解码成 JSON」→ `aria-decode decode --input song.mid --output song.json`，交付含全部事件的 JSON。
 
 ## 事实源与更新
 
