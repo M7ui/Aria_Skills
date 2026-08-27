@@ -234,3 +234,71 @@ Intro: 20% → Verse: 40% → Build-up: 40-80% → Drop: 90% → Breakdown: 30% 
 Intro 4 → Loop A ×2（主循环 8+8）→ Loop B（换进行或加 9 音，8）→ Loop A'（回归）→ Outro 4；能量平稳中带跳跃，drop 不是必须。
 
 完整进行/织体/节奏配方库见 aria-compose 的 references/pattern-library.md。
+
+## Kygo 等知名音乐人：真实案例与旋律进行（联网调研沉淀）
+
+> 来源：SoundCy《How to Sound Like Kygo》、SongSense《Firestone / Stole the Show 分析》、worldmusic.heuron.com《Tropical House》、Kygo 官方 Studio 课程笔记、lilys.ai 编曲教程。所有和弦已用 `aria-midi scale --chord` 复算。
+
+### 1. 代表作真实数据（写歌前先对齐「调性坐标」）
+
+| 歌曲 | 年份 | 调性 | BPM | 和弦进行 | 标志手法 |
+|------|------|------|-----|---------|---------|
+| Firestone | 2014 | B 小调 | 116 | VI–VII–i–III（G–A–Bm–D） | 钢琴 + pan-flute 类 hook，切分 drop 旋律 |
+| Stole the Show | 2015 | G# 小调 | 100 | 每小节一和弦 | 笛类 synth 旋律 hook，人声后接器乐 drop |
+| It Ain't Me | 2017 | — | — | — | vocal chop + pluck |
+| I Took a Pill in Ibiza (remix) | 2015 | — | — | — | pluck 旋律 + 情绪 acapella |
+
+**关键洞察**：Kygo 常被贴「明亮」标签，但他多首代表作其实是**小调**（B 小调 / G# 小调）。他的「阳光感」来自**大调式 7/9 扩展和弦 + 大调副歌**，而非全程大调。写 Tropical 不要死守 G 大调——小调 + maj7/9 一样出「夏日感」，而且更有层次。
+
+### 2. 真实和弦进行配方（已复算）
+
+**① Firestone 式 VI–VII–i–III（B 小调，116 BPM）**
+
+小调里的「上扬进行」，比纯 i–VI–III–VII 更亮、更有推进感（每和弦 1 小节，循环 4 轮）：
+
+```text
+G  (55, 59, 62) → A (57, 61, 64) → Bm (59, 62, 66) → D (50, 54, 57)
+```
+
+**② I–V–vi–IV + 7/9 扩展（Kygo 明亮感核心）**
+
+万能四和弦给 V 加 maj7/9 制造「期待感」（SoundCy 原话：把 G 换成 Gmaj7/G9）：
+
+```text
+Cmaj7 (60, 64, 67, 71)   Fmaj9 (53, 57, 60, 64, 67)
+Cadd9 (60, 64, 67, 74)   G7→G9 (55, 59, 62, 65 [+69])
+```
+
+**③ 扩展和弦三支柱**：maj7 / maj9 / add9 是「阳光感」的三个支柱，比纯三和弦更暖、更有空间感。
+
+### 3. 旋律进行手法（重点）
+
+**① 钢琴即兴 → 再换音色**（Kygo 官方课程原话）
+
+先在钢琴上即兴找 2–5 音动机，确认 catchy 后**再换 pluck / pan-flute 音色**。不要一上来就调 synth 音色，先让旋律本身成立。
+
+**② drop 旋律 = 切分器乐 hook，不是重 bass**
+
+Tropical 的 drop 不是重低音，而是**切分、上口的器乐旋律**（pan-flute / pluck）。人声短语后接器乐应答（call & response）——Stole the Show 的笛类旋律就是 chorus 的核心 hook。
+
+**③ 两条旋律路线（选一条）**
+
+- **vocal chop 路线**（Higher Love / It Ain't Me）：把人声切片、变调（formant / pitch shift），当键盘音色弹成旋律
+- **纯 pluck 路线**（I Took a Pill in Ibiza）：简单五声音阶旋律 + 带 reverb 的 pluck
+
+**④ 「水果味」旋律配方**
+
+- 五声音阶为主，级进 + 长音回落
+- 上行轮廓制造「乐观上扬」，最高点放乐句 2/3 处
+- 简单、易弹、catchy 永远 > 复杂
+
+### 4. 标志音色与编曲细节
+
+| 元素 | 配方 |
+|------|------|
+| plucky chords | Kygo 标志：短 decay 的 pluck 弹和弦，不是长音 pad |
+| 吉他 | muted pluck（闷音拨弦），不是扫弦，制造有机感 |
+| 鼓组 | 轻 kick（tuned 到调性根音/五度）+ soft clap + shaker + hand clap + rimshot |
+| sidechain | 5–10% 深度、10–20ms 快 attack 的「轻泵动」，不是重抽 |
+| 人声让位 | verse 给鼓组加 band-pass filter，让人声居中、留空间 |
+| 结构 | drop 靠旋律/人声主导；pre-chorus 加 percussion + strings 铺垫张力 |

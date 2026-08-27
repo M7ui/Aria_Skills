@@ -184,6 +184,139 @@ class TestAnalyze(unittest.TestCase):
             data = json.loads(r.stdout)
             self.assertNotEqual(data["details"]["chord_tone_rate"], "无和弦定义")
 
+    def test_leapy_melody_scores_low(self):
+        """跳进为主（级进占比 <40%）→ 断裂惩罚，分数应显著低于级进为主的旋律。"""
+        leaps = [{"pitch": 60 + (i % 2) * 5, "start_beat": i * 0.5, "duration": 0.5, "velocity": 90}
+                 for i in range(16)]
+        steps = [{"pitch": 60 + i, "start_beat": i * 0.5, "duration": 0.5, "velocity": 90}
+                 for i in range(16)]
+        r_leap = run_cli("analyze", "--input", "-", stdin=json.dumps({"bpm": 120, "notes": leaps}))
+        r_step = run_cli("analyze", "--input", "-", stdin=json.dumps({"bpm": 120, "notes": steps}))
+        self.assertEqual(r_leap.returncode, 0, r_leap.stdout)
+        data_leap = json.loads(r_leap.stdout)
+        data_step = json.loads(r_step.stdout)
+        self.assertLess(data_leap["score"], data_step["score"])
+        self.assertLess(float(data_leap["details"]["step_ratio"].rstrip("%")), 40)
+
+    def test_style_arpeggio_exempts_leaps(self):
+        """--style arpeggio 豁免跳进约束，分数应回升。"""
+        leaps = [{"pitch": 60 + (i % 2) * 5, "start_beat": i * 0.5, "duration": 0.5, "velocity": 90}
+                 for i in range(16)]
+        base = run_cli("analyze", "--input", "-", stdin=json.dumps({"bpm": 120, "notes": leaps}))
+        exempt = run_cli("analyze", "--input", "-", "--style", "arpeggio",
+                         stdin=json.dumps({"bpm": 120, "notes": leaps}))
+        self.assertGreater(json.loads(exempt.stdout)["score"], json.loads(base.stdout)["score"])
+
+    def test_track_selection_and_all_tracks(self):
+        """--track 指定轨 / --all-tracks 合并 / 默认选平均音高最高的旋律轨。"""
+        song = {"tracks": [
+            {"name": "旋律", "notes": [{"pitch": 72, "start_beat": 0, "duration": 1, "velocity": 90},
+                                       {"pitch": 74, "start_beat": 1, "duration": 1, "velocity": 90}]},
+            {"name": "低音", "notes": [{"pitch": 36, "start_beat": 0, "duration": 1, "velocity": 90},
+                                       {"pitch": 43, "start_beat": 1, "duration": 1, "velocity": 90}]},
+        ]}
+        dft = json.loads(run_cli("analyze", "--input", "-", stdin=json.dumps(song)).stdout)
+        self.assertEqual(dft["details"]["analyzed_track"], "旋律")
+        bass = json.loads(run_cli("analyze", "--input", "-", "--track", "低音",
+                                  stdin=json.dumps(song)).stdout)
+        self.assertEqual(bass["details"]["analyzed_track"], "低音")
+        all_t = json.loads(run_cli("analyze", "--input", "-", "--all-tracks",
+                                   stdin=json.dumps(song)).stdout)
+        self.assertEqual(all_t["details"]["analyzed_track"], "全部音轨")
+        self.assertEqual(all_t["details"]["total_notes"], 4)
+
+    def test_sub_scores_split_technical_and_musicality(self):
+        """技术分/音乐性分拆栏：跳进旋律技术分与音乐性分都低，passed 应为 false。"""
+        leaps = [{"pitch": 60 + (i % 2) * 5, "start_beat": i * 0.5, "duration": 0.5, "velocity": 90}
+                 for i in range(16)]
+        d = json.loads(run_cli("analyze", "--input", "-", stdin=json.dumps({"bpm": 120, "notes": leaps})).stdout)
+        self.assertIn("technical_score", d)
+        self.assertIn("musicality_score", d)
+        self.assertIn("passed", d)
+        self.assertLess(d["musicality_score"], 6.0)
+        self.assertFalse(d["passed"])
+
+    def test_structure_block_present(self):
+        """analyze 输出应含 structure_score 与 details.structure（乐句结构分析）。"""
+        r = run_cli("analyze", "--input", str(FIXTURE))
+        self.assertEqual(r.returncode, 0, r.stdout)
+        d = json.loads(r.stdout)
+        self.assertIn("structure_score", d)
+        self.assertIn("structure", d["details"])
+        self.assertIn("phrase_count", d["details"]["structure"])
+
+    def test_structured_melody_scores_higher_structure(self):
+        """起承转合式四句（同头异尾+休止分句+落主音）结构分应高于一气呵成的流水旋律。"""
+        # 4 个乐句：共享开头轮廓 (+,+,-)，句间 1 拍休止，末句落主音 C4
+        phrases = [
+            [(60, 0.0), (62, 0.5), (64, 1.0), (62, 1.5)],
+            [(60, 3.0), (62, 3.5), (64, 4.0), (67, 4.5)],   # 承：同头，尾落属音 G
+            [(65, 7.0), (67, 7.5), (69, 8.0), (65, 8.5)],   # 转：换头
+            [(60, 11.0), (62, 11.5), (64, 12.0), (60, 12.5)],  # 合：同头，尾落主音 C
+        ]
+        notes = [{"pitch": p, "start_beat": b, "duration": 0.5, "velocity": 85 + (i % 4) * 5}
+                 for i, ph in enumerate(phrases) for p, b in ph]
+        flow = [{"pitch": 60 + (i % 7), "start_beat": i * 0.5, "duration": 0.5, "velocity": 85 + (i % 4) * 5}
+                for i in range(16)]
+        d1 = json.loads(run_cli("analyze", "--input", "-", "--key-root", "C4",
+                                stdin=json.dumps({"bpm": 120, "notes": notes})).stdout)
+        d2 = json.loads(run_cli("analyze", "--input", "-", "--key-root", "C4",
+                                stdin=json.dumps({"bpm": 120, "notes": flow})).stdout)
+        self.assertEqual(d1["details"]["structure"]["phrase_count"], 4)
+        self.assertGreaterEqual(d1["details"]["structure"]["contour_reuse_pairs"], 2)
+        self.assertGreater(d1["structure_score"], d2["structure_score"])
+
+    def test_structure_suggestion_for_single_phrase(self):
+        """全程无休止/长音的流水旋律应收到「只切出 1 个乐句」建议。"""
+        flow = [{"pitch": 60 + (i % 7), "start_beat": i * 0.5, "duration": 0.5, "velocity": 90}
+                for i in range(16)]
+        d = json.loads(run_cli("analyze", "--input", "-",
+                               stdin=json.dumps({"bpm": 120, "notes": flow})).stdout)
+        self.assertIn("乐句", " ".join(d["suggestions"]))
+
+
+class TestCompare(unittest.TestCase):
+    def _tmp_song(self, td, notes, bpm=120, name="s.json"):
+        p = Path(td) / name
+        p.write_text(json.dumps({"bpm": bpm, "notes": notes}), encoding="utf-8")
+        return p
+
+    def test_compare_matches_self_generated_reference(self):
+        """产出经 generate 得到 .mid 后，compare 自比应高度匹配。"""
+        notes = [{"pitch": 60 + i, "start_beat": i * 0.5, "duration": 0.5, "velocity": 90}
+                 for i in range(12)]
+        with tempfile.TemporaryDirectory() as td:
+            song = self._tmp_song(td, notes)
+            mid = Path(td) / "ref.mid"
+            run_cli("generate", "--input", str(song), "--output", str(mid))
+            r = run_cli("compare", "--input", str(song), "--reference", str(mid))
+            self.assertEqual(r.returncode, 0, r.stdout)
+            d = json.loads(r.stdout)
+            self.assertEqual(d["verdict"], "风格匹配")
+
+    def test_compare_detects_style_divergence(self):
+        """级进旋律 vs 跳进参考（音域跨度大）→ 判风格偏离。"""
+        steps = [{"pitch": 60 + i, "start_beat": i * 0.5, "duration": 0.5, "velocity": 90}
+                 for i in range(12)]
+        leaps = [{"pitch": 60 + (i % 2) * 12, "start_beat": i * 0.5, "duration": 0.5, "velocity": 90}
+                 for i in range(12)]
+        with tempfile.TemporaryDirectory() as td:
+            song = self._tmp_song(td, steps, name="steps.json")
+            refsong = self._tmp_song(td, leaps, bpm=120, name="leaps.json")
+            mid = Path(td) / "ref.mid"
+            run_cli("generate", "--input", str(refsong), "--output", str(mid))
+            r = run_cli("compare", "--input", str(song), "--reference", str(mid))
+            self.assertEqual(r.returncode, 0, r.stdout)
+            d = json.loads(r.stdout)
+            self.assertEqual(d["verdict"], "风格偏离")
+            self.assertFalse(d["dimensions"]["step_ratio"]["ok"])
+
+    def test_compare_missing_reference_exit2(self):
+        with tempfile.TemporaryDirectory() as td:
+            song = self._tmp_song(td, [{"pitch": 60, "start_beat": 0, "duration": 1}])
+            r = run_cli("compare", "--input", str(song), "--reference", str(Path(td) / "nope.mid"))
+            self.assertEqual(r.returncode, 2)
+
 
 class TestBpmOverride(unittest.TestCase):
     def test_bpm_flag_overrides_song_bpm(self):

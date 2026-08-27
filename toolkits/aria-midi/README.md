@@ -16,9 +16,10 @@ aria-midi <子命令> [参数]
 | `validate` | 校验 schema / 音域 / 力度 / 量化 / 重叠 | 0 通过（可含警告）/ 1 有错误 / 2 IO 错误 |
 | `inspect` | 解析 .mid → 音符列表 JSON | 0 / 1 数据错误 / 2 IO 错误 |
 | `scale` | 音阶/和弦：列音、和弦音、吸附、调式推测 | 0 / 2 用法错误 |
-| `analyze` | 旋律质量 0–10 评分 + 中文建议 | 0 / 1 数据错误 / 2 IO 错误 |
+| `analyze` | 旋律质量 0–10 评分（技术分/音乐性分/结构分）+ 中文建议 | 0 / 1 数据错误 / 2 IO 错误 |
+| `compare` | 风格锚定：产出 song.json 与参考 .mid 风格参数对比 | 0 / 1 数据错误 / 2 IO 错误 |
 
-通用约定：`--input -` 从 stdin 读取（generate/validate/analyze）；`--version` 打印版本；所有输出 UTF-8 JSON。
+通用约定：`--input -` 从 stdin 读取（generate/validate/analyze/compare）；`--version` 打印版本；所有输出 UTF-8 JSON。
 
 ## generate
 
@@ -98,14 +99,71 @@ aria-midi scale --suggest 60,62,64,65,67,69,71                # 由音高推测�
 ## analyze
 
 ```bash
-aria-midi analyze --input song.json                      # 基础分析
+aria-midi analyze --input song.json                      # 基础分析（默认评旋律轨）
 aria-midi analyze --input song.json --chords chords.json  # 含强拍和弦音匹配率
 aria-midi analyze --input song.json --key-root C4 --key-type major  # 含出界音符检查
+aria-midi analyze --input song.json --track 旋律          # 按名称指定评分音轨
+aria-midi analyze --input song.json --all-tracks          # 合并全部音轨（旧行为）
+aria-midi analyze --input song.json --style arpeggio      # 豁免跳进约束（jazz/arpeggio/blues/edm/lofi）
 ```
 
-评分维度（0–10）：**强拍(第1、3拍)和弦音匹配率**（≤2 分，规则 2 核心指标；无和弦定义时退回全音符匹配率）、时值多样性（≤2 分）、力度动态范围（≤1 分）、呼吸空间（≤1 分）、基础分 5。
+评分维度（0–10，基础分 2.0）：
 
-输出：`{score, summary(优秀/良好/一般/需要改进), details{...}, suggestions[]}`。details 含 `chord_tone_rate`（全音符）与 `strong_beat_chord_tone_rate`（强拍单独统计）两个口径。suggestions 为中文，可直接指导修改 song.json。
+| 维度 | 分值 | 说明 |
+|------|------|------|
+| 强拍和弦音匹配率 | ≤1.5 | 规则 2；无和弦定义退回全音符匹配率 |
+| **级进占比** | ≤2.5 | 规则 5 核心：级进占比 ≥60% 拿满，<40% 视为旋律断裂 |
+| 时值多样性 | ≤1.5 | ≥3 种时值拿满 |
+| 力度动态范围 | ≤1.0 | 极差 ≥20 拿满 |
+| 呼吸空间 | ≤1.0 | 连续无休止占比越低越高 |
+| 动机发展 | ≤0.5 | 有动机重复（规则 1）加分 |
+
+惩罚项：级进占比 <40%（跳进为主）扣 2.0；跳进是级进 2 倍以上扣 1.5（`--style` 豁免跳进型风格）。
+
+**旋律轨隔离**：默认只评「平均音高最高的轨」（通常是旋律轨），避免低音/伴奏轨的分解音污染级进与呼吸统计。`--track` 显式指定、`--all-tracks` 回退旧行为。
+
+输出：`{score, technical_score, musicality_score, passed, summary, details{...}, suggestions[]}`。details 含 `analyzed_track`（评分轨）、`analyzed_notes`（评分音符数）、`total_notes`（全曲）、`step_ratio`（级进占比）、`motif_reuse`（动机重复）、`chord_tone_rate`（全音符）与 `strong_beat_chord_tone_rate`（强拍单独统计）。suggestions 为中文，可直接指导修改 song.json。
+
+### 技术分 / 音乐性分
+
+总分 `score` 之外，另拆两个子分（各 0–10），避免「技术指标刷分」掩盖旋律断裂：
+
+- `technical_score` 技术分：强拍和弦音（≤3）+ 时值多样（≤2.5）+ 力度范围（≤2）+ 呼吸空间（≤2.5）——衡量「写对了没」
+- `musicality_score` 音乐性分：级进占比（≤6，核心）+ 动机发展（≤4），断裂/跳进过度另扣——衡量「好听吗」
+- `passed`：`technical ≥ 6 且 musicality ≥ 6` 才为 true，作为放行开关（比单一 `score ≥ 7` 更严格）
+
+### 结构分（v1.2.0 新增，连贯性维度）
+
+`structure_score`（0–10，独立第三栏，不参与 `passed`）检查模块化乐句结构，
+对应 composition-rules.md「规则 1 补充」的四级组装（动机→乐节→乐句→乐段）：
+
+| 检测项 | 分值 | 判定 |
+|--------|------|------|
+| 乐句切分 | ≤3 | 按休止 ≥0.5 拍 / 长音 ≥2 拍切句（大 IOI 是乐句边界的强预测因子，Pearce et al. 2010）；2–8 句拿满，只切出 1 句扣分并给建议 |
+| 跨乐句轮廓复用 | ≤3 | 乐句开头 2 个音程方向相同的对数 > 0（period/起承转合/AABA 的「同头」特征） |
+| 高潮位置 | ≤2 | ≥16 拍时，全曲最高音出现在 35%–90% 区间拿满；<30% 报「高潮太早」 |
+| 终止稳定性 | ≤2 | 仅传 `--key-root` 时启用：末乐句落主音拿满；倒数乐句不落属音/上主音给半终止建议 |
+
+输出位置：顶层 `structure_score`；`details.structure` 含 `phrase_count` / `phrase_lengths` /
+`phrase_endings_pc` / `contour_reuse_pairs` / `climax_position` / `final_on_tonic`。
+结构建议直接进 `suggestions`。使用建议：`analyze --chords chords.json --key-root C4` 一起传，结构分 < 6 时先修乐句计划再改音符。
+
+## compare（风格锚定）
+
+把产出与真实案例 `.mid` 做风格参数对比，用于「我写的这首像不像目标风格」的自检。
+
+```bash
+aria-midi compare --input song.json --reference examples/midi/tropical-demo.mid
+```
+
+对比维度（产出旋律轨 vs 参考旋律轨）：BPM、级进占比、音域跨度、力度范围、音符密度、短音占比。输出 `{similarity(0-1), verdict(风格匹配/偏离), dimensions{...}}`。
+
+判定：6 个维度匹配占比 = `similarity`；**级进占比严重偏离（>0.2）或 similarity <0.6 → 判「风格偏离」**（级进占比是区分可唱旋律与琶音/断裂的头号指标）。
+
+```bash
+aria-midi compare --input tropical_loop.json --reference examples/midi/tropical-demo.mid  # 风格匹配
+aria-midi compare --input piano_piece.json  --reference examples/midi/tropical-demo.mid  # 风格偏离（级进占比 19% vs 62%）
+```
 
 ## 数据 Schema
 

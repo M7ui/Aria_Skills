@@ -7,7 +7,7 @@
   validate   校验 song.json 的 schema / 音域 / 力度 / 量化 / 重叠
   inspect    解析现有 .mid 文件 -> 音符列表 JSON（零依赖解析器）
   scale      音阶 / 和弦工具：列音、和弦音、调式吸附、调式推测
-  analyze    旋律质量分析：0-10 评分 + 中文改进建议
+  analyze    旋律质量分析：0-10 评分 + 乐句结构分析 + 中文改进建议
 
 约定：
   - 所有子命令 JSON 进 JSON 出（generate 输出二进制 .mid 文件）
@@ -640,18 +640,187 @@ def cmd_scale(args):
 # ══════════════════════════════════════════════════════════════
 # 子命令：analyze
 # ══════════════════════════════════════════════════════════════
+# 旋律性豁免风格：这些风格以跳进/琶音为特征，不做「级进占比」硬约束
+_LEAPY_STYLES = {"jazz", "arpeggio", "blues", "edm", "lofi"}
+
+
+def _select_analysis_tracks(tracks, args):
+    """选择评分音轨。--all-tracks 全轨；--track 按名称匹配；默认取平均音高最高的旋律轨。"""
+    if getattr(args, "all_tracks", False):
+        return tracks
+    if getattr(args, "track", None):
+        for t in tracks:
+            if args.track in t["name"]:
+                return [t]
+        raise DataError(f"未找到名称含 {args.track!r} 的音轨（可用 --all-tracks 分析全部音轨）")
+    if len(tracks) <= 1:
+        return tracks
+    best, best_avg = None, None
+    for t in tracks:
+        ns = [n for n in t.get("notes", []) if isinstance(n, dict)]
+        if not ns:
+            continue
+        avg = sum(float(n.get("pitch", 60)) for n in ns) / len(ns)
+        if best_avg is None or avg > best_avg:
+            best_avg, best = avg, t
+    return [best] if best is not None else tracks
+
+
+def _motif_reuse(pitches):
+    """检测 4 音动机（3 音程窗口）重复次数；纯音阶（音程全同）不计为动机。"""
+    if len(pitches) < 5:
+        return 0
+    intervals = [pitches[i + 1] - pitches[i] for i in range(len(pitches) - 1)]
+    if len(set(intervals)) == 1:
+        return 0
+    seen, reused = set(), 0
+    for i in range(len(intervals) - 2):
+        tri = (intervals[i], intervals[i + 1], intervals[i + 2])
+        if tri in seen:
+            reused += 1
+        else:
+            seen.add(tri)
+    return reused
+
+
+def _segment_phrases(srt, gap_thresh=0.5, long_note=2.0):
+    """按休止与长音把旋律切成乐句（大 IOI / 长音是乐句边界的强预测因子，Pearce et al. 2010）。
+
+    边界判定：音符间隙 >= gap_thresh 拍，或音符时值 >= long_note 拍（长音即句尾）。
+    输入为按 start_beat 排序的音符列表；返回乐句列表，每个乐句是音符 dict 列表。
+    """
+    phrases, cur = [], []
+    for i, n in enumerate(srt):
+        cur.append(n)
+        end = float(n.get("start_beat", 0)) + float(n.get("duration", 1))
+        if i + 1 < len(srt):
+            gap = float(srt[i + 1].get("start_beat", 0)) - end
+            boundary = gap >= gap_thresh or float(n.get("duration", 1)) >= long_note
+        else:
+            boundary = True
+        if boundary:
+            phrases.append(cur)
+            cur = []
+    if cur:
+        phrases.append(cur)
+    return phrases
+
+
+def _phrase_contour(phrase):
+    """乐句的音程方向轮廓（1 上行 / -1 下行 / 0 同音），用于跨乐句相似性比较。"""
+    ps = [int(n.get("pitch", 60)) for n in phrase]
+    return tuple(1 if ps[i + 1] > ps[i] else -1 if ps[i + 1] < ps[i] else 0
+                 for i in range(len(ps) - 1))
+
+
+def _analyze_structure(srt, key_pc=None):
+    """模块化乐句结构分析（动机→乐句→乐段的连贯性维度）。
+
+    检测项：
+      - 乐句切分：按休止/长音分段（period/sentence/起承转合 的物质基础是「可数的乐句」）
+      - 跨乐句轮廓复用：乐句开头轮廓相同 = AABA/起承转合/period 的「同头」特征
+      - 高潮位置：全曲最高音应落在 35%–90% 区间（拱形轮廓经验值），过早出现 = 后主歌失去期待
+      - 终止稳定性（给定调性时）：末乐句落主音 = 收束；倒数乐句落属音 = 半终止铺垫
+
+    返回 (structure_dict, suggestions_list, structure_score_0_to_10)。
+    """
+    if len(srt) < 6:
+        return None, [], None
+    phrases = _segment_phrases(srt)
+    first_start = float(srt[0].get("start_beat", 0))
+    total_beats = float(srt[-1]["start_beat"]) + float(srt[-1].get("duration", 1)) - first_start
+
+    # 高潮位置：最高音首次出现的相对位置
+    peak_pitch = max(int(n.get("pitch", 60)) for n in srt)
+    peak_beat = min(float(n.get("start_beat", 0)) for n in srt if int(n.get("pitch", 60)) == peak_pitch)
+    climax_pos = (peak_beat - first_start) / total_beats if total_beats > 0 else 0.0
+
+    # 跨乐句轮廓复用：两两比较乐句开头 2 个音程方向（「同头变尾」是 period/起承转合的核心）
+    contours = [_phrase_contour(p) for p in phrases]
+    contour_reuse = 0
+    for i in range(len(contours)):
+        for j in range(i + 1, len(contours)):
+            a, b = contours[i], contours[j]
+            if len(a) >= 2 and len(b) >= 2 and a[:2] == b[:2]:
+                contour_reuse += 1
+
+    # 乐句结束音（每句最后一个音高的 pitch class）
+    endings = [int(p[-1].get("pitch", 60)) % 12 for p in phrases if p]
+    final_on_tonic = None
+    penult_on_dominant = None
+    if key_pc is not None and endings:
+        final_on_tonic = endings[-1] == key_pc % 12
+        if len(endings) >= 2:
+            penult_on_dominant = endings[-2] in {(key_pc + 7) % 12, (key_pc + 2) % 12}
+
+    suggestions = []
+    points, max_points = 0.0, 8.0
+    if len(phrases) >= 2:
+        points += 3.0 if len(phrases) <= 8 else 2.0
+    else:
+        points += 1.0
+        if len(srt) >= 8:
+            suggestions.append(
+                "整段旋律只切出 1 个乐句（全程无 ≥0.5 拍休止或 ≥2 拍长音），"
+                "听感会一口气喘不上来；按 period 4+4 / sentence 2+2+4 / 起承转合 四句体切分乐句")
+    if contour_reuse > 0:
+        points += 3.0
+    elif len(phrases) >= 3:
+        suggestions.append(
+            f"{len(phrases)} 个乐句的开头轮廓两两不同，缺少「同头」复用；"
+            "AABA / 起承转合 / period 都靠乐句开头相同、结尾变化建立连贯性，"
+            "建议让相邻乐句共享前 2-3 个音的音程走向")
+    if total_beats >= 16:
+        if 0.35 <= climax_pos <= 0.9:
+            points += 2.0
+        elif climax_pos < 0.3:
+            suggestions.append(
+                f"全曲最高音出现在前 {climax_pos * 100:.0f}% 处，高潮来得太早，后段失去期待感；"
+                "建议把最高音安排在全曲 1/2–4/5 处（拱形轮廓），或副歌偏后位置")
+        else:
+            points += 1.0
+    else:
+        points += 2.0  # 短旋律不做高潮位置约束
+    if key_pc is not None and endings:
+        max_points += 2.0
+        if final_on_tonic:
+            points += 2.0
+        else:
+            suggestions.append(
+                f"末乐句结束音 {NOTE_NAMES[endings[-1]]} 不是主音 {NOTE_NAMES[key_pc % 12]}，"
+                "全曲缺少收束感；若不是有意的开放结尾，建议末句落在主音（长音 ≥2 拍）")
+        if len(endings) >= 2 and not penult_on_dominant:
+            suggestions.append(
+                "倒数乐句的结束音不是属音/上主音，段尾缺少半终止铺垫；"
+                "问答句结构里前句停属音（开放）、后句停主音（收束）是最省力的连贯性手段")
+
+    structure_score = round(points / max_points * 10, 1) if max_points else None
+    info = {
+        "phrase_count": len(phrases),
+        "phrase_lengths": [len(p) for p in phrases],
+        "phrase_endings_pc": endings,
+        "contour_reuse_pairs": contour_reuse,
+        "climax_position": f"{climax_pos * 100:.0f}%",
+        "final_on_tonic": final_on_tonic,
+    }
+    return info, suggestions, structure_score
+
+
 def cmd_analyze(args):
     song = load_json_input(args.input, "song.json")
     tracks = normalize_tracks(song)
-    all_notes = []
-    for t in tracks:
-        for n in t.get("notes", []):
-            if isinstance(n, dict):
-                all_notes.append(n)
+
+    all_track_notes = [n for t in tracks for n in t.get("notes", []) if isinstance(n, dict)]
+
+    analysis_tracks = _select_analysis_tracks(tracks, args)
+    all_notes = [n for t in analysis_tracks for n in t.get("notes", []) if isinstance(n, dict)]
     if not all_notes:
         print(json.dumps({"score": 0, "summary": "暂无音符可分析",
                           "suggestions": ["先添加一些音符再分析"]}, ensure_ascii=False))
         return 0
+
+    style = (args.style or "melodic").lower()
+    style_exempt = style in _LEAPY_STYLES
 
     chords = []
     if args.chords:
@@ -706,31 +875,41 @@ def cmd_analyze(args):
             back_to_back += 1
 
     pitches = [int(n["pitch"]) for n in srt]
-    leap_count = step_count = 0
+    step_count = leap_count = 0
     for i in range(1, len(pitches)):
         diff = abs(pitches[i] - pitches[i - 1])
         if diff <= 2:
-            step_count += 1
-        elif diff >= 4:
-            leap_count += 1
+            step_count += 1  # 大二度以内 = 级进
+        else:
+            leap_count += 1  # ≥ 小三度 = 跳进
+
+    total_moves = step_count + leap_count
+    step_ratio = step_count / total_moves if total_moves else 0.0
+
+    motif_reused = _motif_reuse(pitches)
 
     suggestions = []
     rate = chord_tone_hits / chord_tone_total if chord_tone_total else 0
     strong_rate = strong_hits / strong_total if strong_total else None
     if strong_total > 0 and strong_rate < 0.6:
-        suggestions.append(f"强拍(第1、3拍)上的音符与和弦音匹配率仅 {strong_rate * 100:.0f}%，建议检查和弦进行定义，让强拍音符落在和弦音上")
+        suggestions.append(f"强拍(第1、3拍)上的音符与和弦音匹配率仅 {strong_rate * 100:.0f}%，建议检查和弦进行定义；若是挂留/倚音/蓝调音的有意表达，可保留")
     elif strong_total == 0 and chord_tone_total > 0 and rate < 0.6:
-        suggestions.append(f"音符与和弦音匹配率仅 {rate * 100:.0f}%，建议检查和弦进行定义，让强拍音符落在和弦音上")
+        suggestions.append(f"音符与和弦音匹配率仅 {rate * 100:.0f}%，建议检查和弦进行定义；若是挂留/倚音/蓝调音的有意表达，可保留")
+    if total_moves >= 4 and not style_exempt:
+        if step_ratio < 0.4:
+            suggestions.append(f"级进占比仅 {step_ratio * 100:.0f}%（跳进 {leap_count} 次 vs 级进 {step_count} 次），旋律断裂、机器味明显；除非是爵士/琶音/蓝调风格，否则应把跳进控制在级进的 1/3 以内")
+        elif step_ratio < 0.6:
+            suggestions.append(f"级进占比偏低（{step_ratio * 100:.0f}%），建议多数音程用大二度以内的级进，让旋律更可唱")
     if unique_durs < 3:
         suggestions.append(f"节奏缺少变化，仅用了 {unique_durs} 种时值。建议至少混用 3 种不同时值 (0.25/0.5/0.75/1.0/1.5/2.0)")
     if vel_spread < 15:
         suggestions.append(f"力度变化太小（范围仅 {vel_spread}），真人演奏至少需要 ±15 的动态范围")
     if back_to_back > len(all_notes) * 0.6:
-        suggestions.append(f"音符连接太紧密（{back_to_back}/{len(all_notes)} 连续无休止），需要更多呼吸空间")
+        suggestions.append(f"音符连接太紧密（{back_to_back}/{len(all_notes)} 连续无休止），需要更多呼吸空间；若是 EDM/Lo-fi 连续律动，可保留")
     if rest_count < 3 and len(all_notes) > 8:
         suggestions.append(f"只有 {rest_count} 处休止，建议每 4 小节至少 2 处明显停顿")
-    if leap_count > step_count * 2:
-        suggestions.append(f"跳进过多（{leap_count} 次跳进 vs {step_count} 次级进），旋律不够连贯")
+    if motif_reused == 0 and len(pitches) >= 8:
+        suggestions.append("缺少动机重复：旋律像流水账，建议设计 2-5 音动机并发展（重复/模进/变奏）")
 
     out_of_scale = None
     if args.key_root:
@@ -742,40 +921,205 @@ def cmd_analyze(args):
             if bad:
                 out_of_scale = {"count": len(bad), "rate": f"{len(bad) / len(all_notes) * 100:.0f}%"}
                 if len(bad) / len(all_notes) > 0.2:
-                    suggestions.append(f"有 {len(bad)} 个音符超出 {NOTE_NAMES[kroot % 12]} {ktype} 音阶（占 {len(bad) / len(all_notes) * 100:.0f}%），建议检查调式或修正音高")
+                    suggestions.append(f"有 {len(bad)} 个音符超出 {NOTE_NAMES[kroot % 12]} {ktype} 音阶（占 {len(bad) / len(all_notes) * 100:.0f}%），建议检查调式或修正音高；若是借调/半音经过音，可保留")
         except ValueError as e:
             raise UsageError(str(e))
 
-    score = 5.0
+    # ── 模块化乐句结构分析（连贯性维度，独立于总分，作为第三栏报告）──
+    key_pc = None
+    if args.key_root:
+        try:
+            key_pc = parse_pitch(args.key_root) % 12
+        except ValueError:
+            key_pc = None
+    structure_info, structure_sugs, structure_score = _analyze_structure(srt, key_pc)
+    suggestions.extend(structure_sugs)
+
+    # ── 评分（总分 10）：基础分降到 2.0，级进占比升为核心指标 ──
+    score = 2.0
     if strong_total > 0:
-        score += min(2, strong_rate * 2)  # 规则 2 核心：强拍和弦音
+        score += min(1.5, strong_rate * 1.5)  # 规则 2：强拍和弦音（基础正确性）
     elif chord_tone_total > 0:
-        score += min(2, rate * 2)
-    score += min(2, unique_durs / 3)
-    score += min(1, vel_spread / 20)
-    score += min(1, max(0, 1 - back_to_back / len(all_notes)) * 2)
-    score = max(0, min(10, round(score)))
+        score += min(1.5, rate * 1.5)
+    if style_exempt:
+        score += 1.25  # 跳进型风格：级进占比中性
+    elif step_ratio >= 0.6:
+        score += 2.5  # 级进占比 ≥60% 拿满（规则 5，可唱性核心）
+    elif step_ratio >= 0.4:
+        score += 1.5
+    else:
+        score += 0.5  # 严重断裂
+    score += min(1.5, unique_durs / 3)
+    score += min(1.0, vel_spread / 20)
+    score += min(1.0, max(0.0, 1.0 - back_to_back / len(all_notes)) * 2)
+    score += 0.5 if motif_reused > 0 else 0.0  # 动机发展（规则 1）
+
+    # 旋律断裂惩罚：级进占比 <40%（跳进为主）是机器味强信号
+    if not style_exempt and total_moves >= 6 and step_ratio < 0.4:
+        score -= 2.0
+    # 跳进过度惩罚：跳进是级进的 2 倍以上
+    if not style_exempt and total_moves >= 6 and leap_count > step_count * 2:
+        score -= 1.5
+
+    score = max(0.0, min(10.0, round(score)))
+
+    # ── 子分：技术分（规则 2/3/4/7 机械正确性）与音乐性分（规则 1/5 旋律性）──
+    # 拆成两栏，避免「技术指标刷分」掩盖旋律断裂，两者都需达标才放行
+    tech = 0.0
+    if strong_total > 0:
+        tech += min(3.0, strong_rate * 3)
+    elif chord_tone_total > 0:
+        tech += min(3.0, rate * 3)
+    tech += min(2.5, (unique_durs / 3) * 2.5)  # 时值多样
+    tech += min(2.0, (vel_spread / 20) * 2.0)  # 力度范围
+    tech += min(2.5, max(0.0, 1.0 - back_to_back / len(all_notes)) * 2 * 2.5)  # 呼吸空间
+    tech = round(min(10.0, tech), 1)
+
+    music = 0.0
+    if style_exempt:
+        music += 4.0  # 跳进型风格中性
+    elif step_ratio >= 0.6:
+        music += 6.0
+    elif step_ratio >= 0.4:
+        music += 3.5
+    else:
+        music += 1.0
+    music += 4.0 if motif_reused > 0 else 0.0  # 动机发展
+    if not style_exempt and total_moves >= 6 and step_ratio < 0.4:
+        music -= 2.0  # 旋律断裂
+    if not style_exempt and total_moves >= 6 and leap_count > step_count * 2:
+        music -= 1.5  # 跳进过度
+    music = round(max(0.0, min(10.0, music)), 1)
+
+    passed = tech >= 6.0 and music >= 6.0
 
     print(json.dumps({
         "score": score,
+        "technical_score": tech,
+        "musicality_score": music,
+        "structure_score": structure_score,
+        "passed": passed,
         "summary": "优秀" if score >= 8 else "良好" if score >= 6 else "一般" if score >= 4 else "需要改进",
         "details": {
-            "total_notes": len(all_notes),
+            "analyzed_track": analysis_tracks[0]["name"] if len(analysis_tracks) == 1 else "全部音轨",
+            "analyzed_notes": len(all_notes),
+            "total_notes": len(all_track_notes),
             "track_count": len(tracks),
+            "style": style,
             "unique_durations": unique_durs,
             "duration_distribution": dur_counts,
             "velocity_range": f"{vel_min}-{vel_max}",
             "velocity_spread": vel_spread,
             "rests_between_notes": rest_count,
             "back_to_back_count": back_to_back,
-            "leaps": leap_count,
             "steps": step_count,
+            "leaps": leap_count,
+            "step_ratio": f"{step_ratio * 100:.0f}%",
             "leap_step_ratio": f"{leap_count / step_count:.1f}" if step_count else "∞",
+            "motif_reuse": motif_reused,
             "chord_tone_rate": f"{rate * 100:.0f}%" if chord_tone_total > 0 else "无和弦定义",
             "strong_beat_chord_tone_rate": f"{strong_rate * 100:.0f}%" if strong_total > 0 else "无强拍数据",
             "out_of_scale": out_of_scale,
+            "structure": structure_info,
         },
         "suggestions": suggestions or ["当前旋律各项指标良好！"],
+    }, ensure_ascii=False, indent=2))
+    return 0
+
+
+# ══════════════════════════════════════════════════════════════
+# 子命令：compare（风格锚定）
+# ══════════════════════════════════════════════════════════════
+def _style_profile(notes):
+    """从音符列表提取风格参数画像（用于产出与真实案例的锚定对比）。"""
+    if not notes:
+        return None
+    pitches = [int(n["pitch"]) for n in notes]
+    vels = [int(n.get("velocity", 100)) for n in notes]
+    durs = [float(n.get("duration", 1)) for n in notes]
+    srt = sorted(notes, key=lambda n: (float(n.get("start_beat", 0)), int(n.get("pitch", 0))))
+    steps = leaps = 0
+    for i in range(1, len(srt)):
+        d = abs(int(srt[i]["pitch"]) - int(srt[i - 1]["pitch"]))
+        if d <= 2:
+            steps += 1
+        else:
+            leaps += 1
+    total_moves = steps + leaps
+    total_beats = max((float(n.get("start_beat", 0)) + float(n.get("duration", 1))) for n in notes)
+    return {
+        "note_count": len(notes),
+        "pitch_min": min(pitches),
+        "pitch_max": max(pitches),
+        "pitch_span": max(pitches) - min(pitches),
+        "velocity_spread": max(vels) - min(vels),
+        "step_ratio": round(steps / total_moves, 3) if total_moves else 0.0,
+        "density": round(len(notes) / total_beats, 3) if total_beats > 0 else 0.0,
+        "short_note_ratio": round(sum(1 for d in durs if d <= 0.5) / len(durs), 3),
+    }
+
+
+def _pick_melody_notes(tracks):
+    """选平均音高最高的轨（旋律轨）返回其音符列表。"""
+    best_notes, best_avg = None, None
+    for t in tracks:
+        ns = [n for n in t.get("notes", []) if isinstance(n, dict)]
+        if not ns:
+            continue
+        avg = sum(float(n.get("pitch", 60)) for n in ns) / len(ns)
+        if best_avg is None or avg > best_avg:
+            best_avg, best_notes = avg, ns
+    return best_notes or []
+
+
+def cmd_compare(args):
+    song = load_json_input(args.input, "song.json")
+    tracks = normalize_tracks(song)
+    src_notes = _pick_melody_notes(tracks)
+    src_bpm = song.get("bpm", 120)
+
+    try:
+        ref_data = read_input(args.reference, binary=True)
+    except OSError as e:
+        raise UsageError(f"无法读取参考文件: {e}")
+    ref = parse_midi(ref_data)
+    ref_notes = _pick_melody_notes(ref["tracks"])
+    ref_bpm = ref["bpm"] or 120
+
+    src_prof = _style_profile(src_notes)
+    ref_prof = _style_profile(ref_notes)
+    if not src_prof or not ref_prof:
+        print(json.dumps({"ok": False, "error": "产出或参考缺少音符，无法对比"}, ensure_ascii=False))
+        return 1
+
+    def dim(src_val, ref_val, abs_tol, rel_tol=0.35):
+        delta = round(src_val - ref_val, 3)
+        ok = abs(delta) <= abs_tol or abs(delta) <= abs(ref_val) * rel_tol
+        return {"source": src_val, "reference": ref_val, "delta": delta, "ok": bool(ok)}
+
+    dims = {
+        "bpm": dim(int(src_bpm), int(ref_bpm), 8),
+        "step_ratio": dim(src_prof["step_ratio"], ref_prof["step_ratio"], 0.12),
+        "pitch_span": dim(src_prof["pitch_span"], ref_prof["pitch_span"], 6),
+        "velocity_spread": dim(src_prof["velocity_spread"], ref_prof["velocity_spread"], 12),
+        "density": dim(src_prof["density"], ref_prof["density"], 1.0),
+        "short_note_ratio": dim(src_prof["short_note_ratio"], ref_prof["short_note_ratio"], 0.25),
+    }
+    checked = [d for d in dims.values() if d["ok"] is not None]
+    matched = sum(1 for d in checked if d["ok"])
+    similarity = round(matched / len(checked), 3) if checked else 0.0
+    # 级进占比是风格核心：严重偏离（>0.2）直接判偏离，无论其他维度是否接近
+    step_fail = dims["step_ratio"]["ok"] is False and abs(dims["step_ratio"]["delta"]) > 0.2
+    verdict = "风格偏离" if (step_fail or similarity < 0.6) else "风格匹配"
+
+    print(json.dumps({
+        "ok": True,
+        "reference": args.reference,
+        "reference_bpm": ref_bpm,
+        "source_bpm": int(src_bpm),
+        "dimensions": dims,
+        "similarity": similarity,
+        "verdict": verdict,
     }, ensure_ascii=False, indent=2))
     return 0
 
@@ -828,7 +1172,7 @@ def build_parser():
     parser = argparse.ArgumentParser(
         prog="aria-midi",
         description="Aria Skills 执行层：零依赖 MIDI 工具包（generate/validate/inspect/scale/analyze）")
-    parser.add_argument("--version", action="version", version="aria-midi 1.1.0")
+    parser.add_argument("--version", action="version", version="aria-midi 1.2.0")
     sub = parser.add_subparsers(dest="cmd", required=True, metavar="<子命令>")
 
     p = sub.add_parser("generate", help="song.json → 标准 MIDI 文件（Type-1, TPQN=480）")
@@ -858,6 +1202,13 @@ def build_parser():
     p.add_argument("--chords", default=None, help="可选 chords.json（和弦进行定义）")
     p.add_argument("--key-root", default=None, help="可选：检查出界音符的调式根音（如 C4）")
     p.add_argument("--key-type", default="major", choices=sorted(SCALES), help="配合 --key-root 使用")
+    p.add_argument("--track", default=None, help="按名称指定评分音轨（默认取平均音高最高的旋律轨）")
+    p.add_argument("--all-tracks", action="store_true", help="合并全部音轨评分（旧行为）")
+    p.add_argument("--style", default="melodic", help="风格：melodic(默认) 或 jazz/arpeggio/blues/edm/lofi 豁免跳进约束")
+
+    p = sub.add_parser("compare", help="风格锚定：产出 song.json 与参考 .mid 做风格参数对比")
+    p.add_argument("--input", required=True, help="产出 song.json 路径，'-' 读 stdin")
+    p.add_argument("--reference", required=True, help="参考 .mid 文件（如 examples/midi/tropical-demo.mid）")
     return parser
 
 
@@ -877,6 +1228,7 @@ def main(argv=None):
             "inspect": cmd_inspect,
             "scale": cmd_scale,
             "analyze": cmd_analyze,
+            "compare": cmd_compare,
         }[args.cmd](args)
     except DataError as e:
         print(json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False))

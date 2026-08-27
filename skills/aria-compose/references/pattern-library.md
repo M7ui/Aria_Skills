@@ -3,6 +3,7 @@
 > 网络调研沉淀（2026-08）：LANDR 博客、Dolmetsch Online、MusicTheoryAcademy、HelloMusicTheory、Splice、EDMProd、Musical-U。
 > 约定：MIDI 音高 C4=60 体系；节拍 4/4、0.25 拍网格（16 分音符）；力度 1–127。
 > 用法顺序：① 定情绪/风格 → ② §1 选和弦进行 → ③ §2 选伴奏织体 → ④ §3 选节奏律动 → ⑤ §4 选旋律发展技法 → ⑥ §5 套结构模板 → ⑦ §6 参数校准。
+> 逐步操作：写旋律/配和弦的强拍骨架、和弦外音与真实歌曲案例见 `melody-chord-writing.md`。
 
 ## 1. 和弦进行配方库
 
@@ -156,6 +157,20 @@ C 大调：C7(60,64,67,70)、F7(65,69,72,75)、G7(67,71,74,77)；旋律用 C 蓝
 - **问答句**：问句上行结束于属音悬置，答句下行结束于主音解决（各 2 小节）
 - **Period 前句后句**（4+4 小节）：前句半终止（停在 V），后句相同开头材料、完全终止（V–I）
 - **Sentence 乐句式**（2+2+4）：2 小节基础动机 + 2 小节重复/移位 + 4 小节碎片化加速与终止式（Caplin 理论）
+- **起承转合四句体**（a–a'–b–a'，2026-08 调研新增）：起句呈示动机（中音区，落主音/三音）→ 承句同头变化重复（落属音，开放牵引）→ 转句对比（音区突变/离调/结构分裂成短分句，落不稳定音）→ 合句再现承句材料（落主音收束）。华语流行主歌/民谣/古风默认图式；副歌内部同样适用（起→承→高潮转→合）。口诀：起句立主题，承句顺延续，转句掀起伏，合句归原位
+- **顶真/鱼咬尾**：后句第一音 = 前句结束音，乐句像链条相扣（《孟姜女》四句 `re-sol-la-sol` 逐句同音相接、《茉莉花》同款）；器乐化变体是「换头」「搭尾」——保尾换头或保头扩尾
+
+### 4.2.1 流行乐句重复图式（4 乐句一段，真实歌曲验证）
+
+| 图式 | 结构 | 真实案例 | 适用 |
+|------|------|----------|------|
+| AABA | 同-同-新-同 | 《You Are a Tourist》Death Cab for Cutie | 主歌/副歌默认，B 句只需「不同但轮廓相似」 |
+| AAAB | 三次重复+第四次变 | 《Paradise》Coldplay、《Rolling in the Deep》副歌 Adele | 副歌 hook 强化 |
+| ABAB | 两句交替 | 《Rolling in the Deep》主歌、《We Found Love》副歌 Rihanna | 双动机对话感 |
+| AABC | 同-同-新-新 | 《Eyes Wide Open》Gotye、《Ours》Taylor Swift | 叙事型主歌 |
+
+要点：B/C 句与 A 句**保持相似轮廓**（音程走向相同、音高可换），听众记住的是「形状」不是具体音高；
+完全无重复的 ABCD 只能靠各句轮廓相似来救。副歌比主歌重复更多、构造更简单——这是听感事实不是偷懒。
 
 ### 4.3 Hook 写作原则
 
@@ -225,6 +240,16 @@ C 大调：C7(60,64,67,70)、F7(65,69,72,75)、G7(67,71,74,77)；旋律用 C 蓝
 - 同音高重叠非法：重触发前必须先结束前一个音符（首尾相接合法）
 - 和弦多音 = 多条同 start 的不同 pitch note
 
+## 8. 反公式化：模式库只是起点
+
+- 模式库的价值是「快速得到正确但普通的初稿」，不是最终答案
+- 每次循环至少改造一个维度：换和声、改节奏、改结构、换织体、加离调音
+- 推荐改造：万能四和弦换成 `I–vi–ii–V` 或借小调和弦；主歌用 3+3+2；副歌提前半拍进入；某段抽掉和弦只留低音+旋律
+- 保持纪律：一次只打破 1–2 条默认规则，打破后回到熟悉材料
+- 详细豁免清单见 `anti-formula.md`
+
 ## 信息来源
 
 LANDR《What are Chord Progressions? / EDM, House & Techno Chord Progressions / Lofi Chord Progressions / What is Modulation in Music?》；Dolmetsch Online《Lesson 22 Chords & Cadences / Lesson 44 Jazz Improvisation Almanac》；MusicTheoryAcademy（sequences / augmentation-diminution / 12-bar blues / modes / tritone / cadences）；HelloMusicTheory（phrase / motifs / hook / AABA / bridges）；Splice（developing a melody / song structure / lo-fi / EDM buildup）；EDMProd（melodic house / pop house / 8-bar loop trap）；Musical-U（song forms / melody secrets）；Pianote（12-bar blues）；m5music（contour / phrase）。文献值：级进占比与跳进反解统计（von Hippel & Huron 2000; Huron 2001）、Sentence 结构（Caplin 1998）。
+
+2026-08 乐句结构增补来源：Motifkit《Musical Phrase Structure Explained (Period & Sentence)》（period/sentence 交互谱例）；MUSIC 375《Songwriting: Analysis and Craft》（motif vs hook 层级、模进/音区变奏/节奏伸缩在流行歌中的用法）；Secrets of Songwriting《Repetition, and the Structure of Good Melodies》《Melodies Aren't Just Notes—They're Shapes》（AABA/AAAB/ABAB/AABC 图式与真实歌曲对照、「听众记形状不记音高」）；李民雄《民族器乐知识广播讲座·起承转合》（华音网，起承转合四句体 + 转句结构分裂/调性变换 + 顶真）；英利音乐问答（陈建华，8 小节起承转合落音指引）；吉他世界《如何为词谱曲》（起承转合 = 重复法 + 对比法）。乐句边界检测依据：Pearce et al. 2010（大 IOI 预测旋律分段）；Empirical Musicology《Is Melody "Dead"?》（压缩率测重复度、小时值占比、独特时值数）；arXiv 2608.19061（m-types：音程方向 × IOI 比值的联合表征）。
