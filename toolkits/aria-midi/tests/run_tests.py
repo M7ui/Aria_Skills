@@ -401,5 +401,146 @@ class TestNegativeStart(unittest.TestCase):
             self.assertIn("start_beat", r.stdout)
 
 
+class TestSongNameAndOutputDerivation(unittest.TestCase):
+    """歌曲名 → 文件名派生 + 序列名写入（「每首歌一个目录」布局的基础）。"""
+
+    SIMPLE = {"bpm": 100, "tracks": [{"name": "t", "channel": 0, "program": 0,
+                                      "notes": [{"pitch": 60, "start_beat": 0,
+                                                 "duration": 1, "velocity": 80}]}]}
+
+    def _write_song(self, td, name=None, fname="song.json"):
+        song = dict(self.SIMPLE)
+        if name is not None:
+            song["name"] = name
+        p = Path(td) / fname
+        p.write_text(json.dumps(song, ensure_ascii=False), encoding="utf-8")
+        return p
+
+    # ---------- slugify 边界 ----------
+    def test_slugify_illegal_chars(self):
+        sys.path.insert(0, str(ROOT))
+        import aria_midi
+        self.assertEqual(aria_midi.slugify("Wait Day"), "Wait Day")   # 空格保留
+        self.assertEqual(aria_midi.slugify("a/b\\c:d*e?f"), "a_b_c_d_e_f")
+        self.assertEqual(aria_midi.slugify(" x "), "x")
+        self.assertEqual(aria_midi.slugify("第1首."), "第1首")          # 结尾点会坑 Windows
+        self.assertEqual(aria_midi.slugify(".."), "song")              # 防路径穿越
+        self.assertEqual(aria_midi.slugify(""), "song")
+        self.assertEqual(aria_midi.slugify("   "), "song")
+        self.assertEqual(aria_midi.slugify("未寄出的信"), "未寄出的信")   # 中文原样保留
+
+    def test_slugify_length_cap(self):
+        sys.path.insert(0, str(ROOT))
+        import aria_midi
+        out = aria_midi.slugify("あ" * 200)
+        self.assertLessEqual(len(out), 60)
+        self.assertTrue(out)
+
+    # ---------- 输出路径派生 ----------
+    def test_output_derived_from_song_name(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = self._write_song(td, "未寄出的信")
+            r = run_cli("generate", "--input", str(src))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = json.loads(r.stdout)["output"]
+            self.assertEqual(Path(out).name, "未寄出的信.mid")
+            self.assertEqual(Path(out).parent, Path(td))          # 落在输入同目录
+            self.assertTrue(Path(out).exists())
+
+    def test_name_flag_overrides_song_name(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = self._write_song(td, "原名")
+            r = run_cli("generate", "--input", str(src), "--name", "新名")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(Path(json.loads(r.stdout)["output"]).name, "新名.mid")
+
+    def test_outdir_flag(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = self._write_song(td, "歌")
+            sub = Path(td) / "out"
+            sub.mkdir()
+            r = run_cli("generate", "--input", str(src), "--outdir", str(sub))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(Path(json.loads(r.stdout)["output"]).parent, sub)
+
+    def test_explicit_output_wins(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = self._write_song(td, "歌")
+            explicit = Path(td) / "whatever.mid"
+            r = run_cli("generate", "--input", str(src), "--output", str(explicit))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertTrue(explicit.exists())
+
+    def test_no_name_and_no_output_is_usage_error(self):
+        """向后兼容：未命名作品仍必须显式给 --output。"""
+        with tempfile.TemporaryDirectory() as td:
+            src = self._write_song(td, name=None)
+            r = run_cli("generate", "--input", str(src))
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("--output", r.stderr + r.stdout)
+
+    def test_outdir_missing_is_usage_error(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = self._write_song(td, "歌")
+            r = run_cli("generate", "--input", str(src),
+                        "--outdir", str(Path(td) / "nope"))
+            self.assertEqual(r.returncode, 2)
+
+    # ---------- 序列名写入 ----------
+    @staticmethod
+    def _conductor_bytes(raw):
+        """取出指挥轨（第一个 MTrk）的字节。
+
+        不能用 `b"\\xff\\x03" in raw` 判断：每个音符轨自己也有 ff 03 音轨名事件，
+        子串匹配分不清是哪一个。MThd 头固定 14 字节，其后第一个 MTrk 即指挥轨。
+        """
+        assert raw[:4] == b"MThd", raw[:8]
+        off = 14
+        assert raw[off:off + 4] == b"MTrk", raw[off:off + 8]
+        length = int.from_bytes(raw[off + 4:off + 8], "big")
+        return raw[off + 8:off + 8 + length]
+
+    def test_sequence_name_written_when_named(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = self._write_song(td, "My Song")
+            out = Path(td) / "o.mid"
+            self.assertEqual(run_cli("generate", "--input", str(src),
+                                     "--output", str(out)).returncode, 0)
+            conductor = self._conductor_bytes(out.read_bytes())
+            self.assertIn(b"\xff\x03", conductor)
+            self.assertIn("My Song".encode("utf-8"), conductor)
+
+    def test_sequence_name_absent_when_unnamed(self):
+        """未命名作品的输出必须与旧版一致 —— 指挥轨不写序列名事件。"""
+        with tempfile.TemporaryDirectory() as td:
+            src = self._write_song(td, name=None)
+            out = Path(td) / "o.mid"
+            self.assertEqual(run_cli("generate", "--input", str(src),
+                                     "--output", str(out)).returncode, 0)
+            self.assertNotIn(b"\xff\x03", self._conductor_bytes(out.read_bytes()))
+
+    def test_sequence_name_truncated_without_split_char(self):
+        """序列名超 64 字节时截断，且不切断多字节字符。"""
+        long_name = "あ" * 40          # UTF-8 每字 3 字节 = 120 字节
+        with tempfile.TemporaryDirectory() as td:
+            src = self._write_song(td, long_name)
+            out = Path(td) / "o.mid"
+            self.assertEqual(run_cli("generate", "--input", str(src),
+                                     "--output", str(out)).returncode, 0)
+            conductor = self._conductor_bytes(out.read_bytes())
+            # ff 03 <len> <payload>
+            idx = conductor.index(b"\xff\x03")
+            n = conductor[idx + 2]
+            self.assertLessEqual(n, 64)
+            self.assertEqual(conductor[idx + 3:idx + 3 + n].decode("utf-8"),
+                             long_name[:n // 3])
+
+    def test_generated_mid_reports_name_field(self):
+        with tempfile.TemporaryDirectory() as td:
+            src = self._write_song(td, "带标题的歌")
+            data = json.loads(run_cli("generate", "--input", str(src)).stdout)
+            self.assertEqual(data["name"], "带标题的歌")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

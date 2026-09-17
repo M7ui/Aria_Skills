@@ -24,14 +24,35 @@ aria-midi <子命令> [参数]
 ## generate
 
 ```bash
+# 推荐：song.json 顶层写 "name"，--output 可省，自动派生 <输入目录>/<歌名>.mid
+aria-midi generate --input 未寄出的信/song.json
+#   → 未寄出的信/未寄出的信.mid
+
 aria-midi generate --input song.json --output song.mid --bpm 120
 aria-midi generate --input song.json --output song.mid --name-encoding gbk
 ```
 
+**歌曲名与输出路径派生**（v1.3.0 新增）
+
+`--output` 可省。按以下优先级决定输出路径：
+
+| 情况 | 输出 |
+|------|------|
+| 给了 `--output` | 原样使用 |
+| 未给，但有 `--name` 或 song.json 顶层 `name` | `<outdir>/<slug(歌名)>.mid` |
+| 未给，也没有歌名 | 用法错误（退出码 2）—— 与旧行为一致，未命名作品仍须显式给 `--output` |
+
+- `--outdir` 指定派生目录；**省略时取 `--input` 所在目录**，所以「每首歌一个目录」的布局下
+  直接 `--input <歌名>/song.json` 就会写出 `<歌名>/<歌名>.mid`，不必重复敲路径
+- 歌名同时写入 MIDI **序列名**（meta `0x03`），DAW/播放器会显示为曲名。
+  超 64 字节截断且不切断多字节字符；**未命名作品不写该事件，输出与旧版逐字节一致**
+- 文件名清洗：`<>:"/\|?*` 与控制字符替换为 `_`，去掉结尾的点与空格（Windows 会静默截断），
+  超 60 字符截断。中文原样保留。清洗后为空则回退 `song`
+
 - 输入：`song.json`（见下方 Schema）；`--bpm` **覆盖**文件内 bpm（40–300），不传则用文件值
-- `--name-encoding auto|utf-8|gbk|big5|...`：音轨名编码。`auto`（默认）在 Windows 使用系统 ANSI 码页（中文系统为 GBK，与系统播放器/传统 DAW 兼容），其它平台 UTF-8
+- `--name-encoding auto|utf-8|gbk|big5|...`：音轨名/序列名编码。`auto`（默认）在 Windows 使用系统 ANSI 码页（中文系统为 GBK，与系统播放器/传统 DAW 兼容），其它平台 UTF-8
 - `start_beat` 为负直接报错（退出码 1），不会静默写坏时间流
-- 输出：MIDI Type-1：第 1 轨为指挥轨（Tempo + 4/4 拍号），其后每音轨一轨（音轨名 meta + Program Change + 音符）
+- 输出：MIDI Type-1：第 1 轨为指挥轨（序列名 + Tempo + 拍号），其后每音轨一轨（音轨名 meta + Program Change + 音符）
 - Note-On/Off 按 tick 排序，同一 tick Off 先于 On（同音高衔接不丢音）
 - 生成时兜底：duration ≤ 0 → 0.25 拍；pitch/velocity 越界 → 夹取到合法范围（validate 负责先报错）
 

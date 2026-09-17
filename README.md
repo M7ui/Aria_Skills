@@ -37,19 +37,28 @@
 │   │   └── references/    #   composition-rules / pattern-library / melody-chord-writing / midi-schema / examples
 │   └── aria-music-theory/  # 乐理问答：音阶/和弦/进行 + 5 大风格知识库（pop/EDM/jazz/tropical/techniques）
 └── toolkits/
-    ├── aria-midi/          # 零依赖 Python CLI：generate/validate/inspect/scale/analyze
+    ├── aria-midi/          # 零依赖 Python CLI：generate/validate/inspect/scale/analyze/compare
     │   ├── aria_midi.py    #   v1.2.0（analyze 新增乐句结构分析 structure_score）
-    │   ├── README.md      #   CLI 完整文档
-    │   ├── tests/         #   33 个自测用例（roundtrip/校验/编码/分析/结构）
-    │   └── bin/aria-midi.cmd   # PATH 垫片
+    │   ├── README.md       #   CLI 完整文档
+    │   ├── tests/          #   33 个自测用例（roundtrip/校验/编码/分析/结构）
+    │   └── bin/aria-midi.cmd    # PATH 垫片
     ├── aria-decode/        # 零依赖 MIDI → JSON 无损解码器
-        ├── aria_decode.py  #   v1.0.1，单文件 ~590 行
-        ├── README.md      #   解码器完整文档
-        ├── tests/         #   22 个用例 35 项断言
-        └── bin/aria-decode.cmd  # PATH 垫片
-    └── aria-report/        # 零依赖 MIDI 批量逆向分析（风格识别 + 调式 + 动机报告）
-        ├── aria_report.py  #   v1.0.0
-        ├── bin/aria-report.cmd   # PATH 垫片
+    │   ├── aria_decode.py  #   v1.0.1，单文件 ~590 行
+    │   ├── README.md       #   解码器完整文档
+    │   ├── tests/          #   22 个用例 35 项断言
+    │   └── bin/aria-decode.cmd  # PATH 垫片
+    ├── aria-report/        # 零依赖 MIDI 批量逆向分析（风格识别 + 调式 + 动机报告）
+    │   ├── aria_report.py  #   v1.0.0（依赖同级的 aria-decode）
+    │   ├── README.md       #   完整文档（含分析维度与已知限制）
+    │   ├── tests/          #   38 个用例 73 项断言
+    │   └── bin/aria-report.cmd  # PATH 垫片
+    └── aria-mcp/           # 零依赖 MCP 服务端（把能力开放给任意 MCP 客户端）
+        ├── aria_mcp.py     #   v1.0.0，手写 stdio JSON-RPC 2.0
+        ├── README.md       #   完整文档（含各客户端配置落点）
+        ├── tests/          #   39 个用例 82 项断言
+        └── bin/aria-mcp.cmd # PATH 垫片
+
+> 每个 `bin/` 同时提供 Windows 的 `.cmd` 与 POSIX 的 `sh` 垫片（无扩展名、可执行位已设）。
 ```
 
 ## 架构
@@ -64,27 +73,39 @@ flowchart TB
     end
 
     subgraph Toolkit[工具层 · 零依赖 Python CLI]
-        Midi[aria-midi<br/>validate · analyze · generate · inspect · scale]
+        Midi[aria-midi<br/>validate · analyze · generate · inspect · scale · compare]
         Decode[aria-decode<br/>MIDI → JSON 无损解码]
+        Report[aria-report<br/>批量逆向分析报告]
+        Mcp[aria-mcp<br/>MCP 服务端<br/>11 tools + 知识库 resources]
     end
 
     subgraph Output[产物]
         Song[song.json 音符数据]
         MidiFile[(song.mid 标准 MIDI)]
         MidiJson[MIDI JSON]
+        MdReport[/report.md 分析报告/]
     end
 
     Agent --> Compose
     Agent --> Theory
+    Agent --> Report
     Compose -->|五步工作流| Midi
     Theory -->|音阶/和弦查表| Midi
     Midi -->|校验/评分| Song
     Midi -->|生成| MidiFile
     MidiFile --> Decode
     Decode --> MidiJson
+    Decode -->|复用解码器| Report
+    Report -->|风格/调式/动机| MdReport
+    Mcp -.->|包装全部工具| Midi
+    Mcp -.->|包装| Decode
+    Mcp -.->|包装| Report
+    Client[任意 MCP 客户端<br/>桌面/编辑器/无 shell 的 Agent] -->|JSON-RPC over stdio| Mcp
 ```
 
-流程：用户一句话 → Agent 按技能提示词驱动 → 工具层零依赖 CLI 计算 → 产出 song.json 与标准 MIDI；`aria-decode` 可把任意 `.mid` 无损解码回 JSON 供逆向分析/质检。
+流程：用户一句话 → Agent 按技能提示词驱动 → 工具层零依赖 CLI 计算 → 产出 song.json 与标准 MIDI；`aria-decode` 可把任意 `.mid` 无损解码回 JSON 供逆向分析/质检，`aria-report` 在解码层之上批量产出风格/调式/动机报告。
+
+**跨 Agent 适配**：`aria-mcp` 把上面三个工具连同知识库包装成 MCP 服务端，使**任何支持 MCP 的客户端**（含没有 shell、读不到提示词的 GUI Agent）都能调用 Aria 的全部能力，而不只是支持 skills 扫描或命令行执行的 Agent。
 
 ## 快速使用
 
@@ -152,6 +173,37 @@ aria-report report --input decode/ --format json             # JSON 输出，供
 ```
 
 用法：把 `.mid` 丢进 `decode/` → `aria-report report --input decode/` → 得到 `report.md`。完整说明见 `decode/README.md`。
+
+## 跨 Agent 适配：MCP 服务端（aria-mcp）
+
+上面三个工具都是命令行程序，隐含要求 Agent **能执行进程**。`aria-mcp` 把它们连同知识库包装成 **MCP（Model Context Protocol）服务端**，使任何支持 MCP 的客户端都能调用——包括没有 shell、也读不到提示词的 GUI 类 Agent。
+
+```bash
+python toolkits/aria-mcp/aria_mcp.py            # stdio 传输，由 MCP 客户端拉起
+python toolkits/aria-mcp/aria_mcp.py --selftest # 自检
+```
+
+在客户端配置里注册（`mcpServers` 为通用键，各客户端文件名不同）：
+
+```json
+{
+  "mcpServers": {
+    "aria": {
+      "command": "python",
+      "args": ["/绝对路径/Aria_Skills/toolkits/aria-mcp/aria_mcp.py"]
+    }
+  }
+}
+```
+
+暴露内容：
+
+- **11 个 tools**：`scale_list` / `chord_tones` / `snap_pitches` / `suggest_scale` / `validate_song` / `analyze_song` / `generate_midi` / `inspect_midi` / `decode_midi` / `compare_style` / `report_midi`
+- **18 个 resources**：`skills/` 下全部 Markdown，以 `aria://knowledge/<路径>` 供客户端**按需拉取**，避免把约 4.3 万 token 的知识库一次性灌进上下文
+
+三个关键设计：**零依赖**（手写 stdio JSON-RPC 2.0，不引官方 SDK，保住「复制即用」）、**传内容不传路径**（MIDI 一律 base64 进出，适配客户端与服务端不共享文件系统的场景）、**`isError` 只表示工具没跑成**（校验查出错误是正常结果 `ok:false`，不是工具崩溃，否则 Agent 读不到报错详情）。
+
+各客户端配置落点与完整说明见 `toolkits/aria-mcp/README.md`。
 
 ## 完整作曲流程（详见 skills/aria-compose/SKILL.md 五步工作流）
 
@@ -293,8 +345,10 @@ cat song.mid | python toolkits/aria-decode/aria_decode.py decode --input - > son
 ## 自测
 
 ```bash
-python toolkits/aria-midi/tests/run_tests.py    # 33 个用例全绿
-python toolkits/aria-decode/tests/run_tests.py  # 22 个用例 35 项断言全绿
+python toolkits/aria-midi/tests/run_tests.py     # 33 个用例全绿
+python toolkits/aria-decode/tests/run_tests.py   # 22 个用例 35 项断言全绿
+python toolkits/aria-report/tests/run_tests.py   # 38 个用例 73 项断言全绿
+python toolkits/aria-mcp/tests/run_tests.py      # 39 个用例 82 项断言全绿
 ```
 
 ## 常见问题

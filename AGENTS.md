@@ -50,11 +50,32 @@ python <本包目录>/toolkits/aria-report/aria_report.py report --input decode/
 aria-report report --input decode/ [--output report.md] [--format md|json]
 ```
 
-## 三种使用方式
+### aria-mcp — MCP 服务端（跨 Agent 适配层）
 
-1. **自动发现**（支持 skills 扫描的工具，如 ZCode/Claude Code）：运行本包内 `python install.py`，把 skills 与 toolkits 部署到 `~/.agents/` 即可被扫描加载。
-2. **显式加载**（任何工具）：让 Agent 读取 `skills/aria-compose/SKILL.md`，按其五步工作流执行；SKILL.md 内的 CLI 定位规则已按包内相对路径设计，复制到任何目录都有效。
-3. **仅用 CLI**：不需要提示词时，按 `toolkits/aria-midi/README.md` 或 `toolkits/aria-decode/README.md` 直接调命令行。
+把上面三个工具连同知识库包装成 MCP 服务端，使**任何支持 MCP 的客户端**都能调用 Aria——包括没有 shell、也读不到提示词的 GUI 类 Agent。零依赖：手写 stdio JSON-RPC 2.0，不引官方 SDK，无需 pip 安装。
+
+暴露 11 个 tools（`scale_list` / `chord_tones` / `snap_pitches` / `suggest_scale` / `validate_song` / `analyze_song` / `generate_midi` / `inspect_midi` / `decode_midi` / `compare_style` / `report_midi`）与 18 个 resources（`skills/` 下全部 Markdown，按需拉取）。
+
+```
+python <本包目录>/toolkits/aria-mcp/aria_mcp.py            # stdio 传输
+python <本包目录>/toolkits/aria-mcp/aria_mcp.py --selftest # 自检
+```
+
+客户端注册（`mcpServers` 为通用键，各客户端文件名不同）：
+
+```json
+{"mcpServers": {"aria": {"command": "python",
+  "args": ["<本包目录>/toolkits/aria-mcp/aria_mcp.py"]}}}
+```
+
+设计要点：MIDI 以 **base64** 进出（客户端与服务端可能不共享文件系统）；`isError` 只表示工具没跑成，`validate_song` 查出错误时返回正常的 `ok:false` + `errors` 列表，**不**标成错误——否则 Agent 会把正常校验当成工具崩溃而读不到报错详情。各客户端配置落点见 `toolkits/aria-mcp/README.md`。
+
+## 四种使用方式
+
+1. **支持 MCP 的工具**（覆盖面最广，推荐）：把 `aria-mcp` 注册为 stdio MCP 服务端。不需要 shell，也不需要 Agent 读提示词。
+2. **自动发现**（支持 skills 扫描的工具，如 ZCode/Claude Code）：运行本包内 `python install.py`，把 skills 与 toolkits 部署到 `~/.agents/` 即可被扫描加载。`aria-report` 依赖同级的 `aria-decode`；`aria-mcp` 依赖其余三个 toolkit 与同级的 `skills/` 知识库，**一并部署，不要单独拷贝**。
+3. **显式加载**（任何工具）：让 Agent 读取 `skills/aria-compose/SKILL.md`，按其五步工作流执行；SKILL.md 内的 CLI 定位规则已按包内相对路径设计，复制到任何目录都有效。
+4. **仅用 CLI**：不需要提示词时，按 `toolkits/aria-midi/README.md`、`toolkits/aria-decode/README.md`、`toolkits/aria-report/README.md` 或 `toolkits/aria-mcp/README.md` 直接调命令行。
 
 ## 操作细节（Agent 执行时）
 
@@ -106,10 +127,40 @@ python toolkits/aria-decode/aria_decode.py decode --input song.mid --output song
 | `1` | 数据错误 | 读 `errors` / `warnings` 修正 song.json 后重跑 |
 | `2` | 用法/IO 错误 | 检查参数、输入路径、输出目录 |
 
+### 项目布局（每首歌一个目录）
+
+**不要把 `song.json` 直接写在项目根目录。** 固定文件名必然撞名，实际会演变成
+`sad.song.json`、`wd222.song.json` 这类前缀混战。约定：
+
+```
+<项目>/
+└── <歌名>/                     # 目录名 = song.json 顶层的 name
+    ├── song.json              # {"name": "<歌名>", "bpm": ..., "tracks": [...]}
+    ├── chords.json            # 和弦进行（可选）
+    ├── <歌名>.mid             # 由 name 自动派生，无需 --output
+    └── build_<歌名>.py        # 生成脚本（长曲/重复织体时用）
+```
+
+```bash
+aria-midi generate --input 未寄出的信/song.json     # → 未寄出的信/未寄出的信.mid
+```
+
+`generate` 的 `--output` 可省：顶层有 `name`（或给 `--name`）时派生
+`<输入目录>/<歌名>.mid`，并把歌名写入 MIDI 序列名（DAW 显示为曲名）。
+两者都没有才报用法错误（退出码 2），与旧行为一致。
+
+**诊断产物默认不落盘。** 回读核对、事件明细、解码结果都是看一眼就扔的中间物
+（实测能占一次作曲过程产出体积的 87%）。用 `--output -` 走管道，或直接看 stdout。
+确实要留存时放进歌曲目录、命名 `<歌名>.qa.json`，并在交付时说明可再生。
+
+**长曲用生成脚本。** 超过约 16 小节、或伴奏有重复织体时，写 `build_<歌名>.py`
+把音符序列化成 song.json，而不是手写几百个 JSON 对象：重复织体压成函数、返修改一处重跑、
+不会手误写坏 0.25 网格。脚本不做乐理计算（音阶和弦用 `aria-midi scale` 查）、不校验、不写 MIDI。
+
 ## 快速开始
 
 用户说「写一段 C 大调流行旋律」→ 读 aria-compose SKILL.md → 五步工作流：
-`validate --strict` → `analyze` → `generate` → `inspect` → 交付 song.json + song.mid + 摘要。
+`validate --strict` → `analyze` → `generate` → `inspect` → 交付 `<歌名>/song.json` + `<歌名>/<歌名>.mid` + 摘要。
 
 用户说「把 song.mid 解码成 JSON」→ `aria-decode decode --input song.mid --output song.json`，交付含全部事件的 JSON。
 

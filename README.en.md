@@ -33,16 +33,28 @@
 │   │   └── references/    #   composition-rules / pattern-library / midi-schema / examples
 │   └── aria-music-theory/  # Music theory Q&A: scales/chords/progressions + 5 style references (pop/EDM/jazz/tropical/techniques)
 └── toolkits/
-    ├── aria-midi/          # Zero-dependency Python CLI: generate/validate/inspect/scale/analyze
-    │   ├── aria_midi.py    #   v1.1.0, single file ~865 lines
-    │   ├── README.md      #   Full CLI documentation
-    │   ├── tests/         #   23 self-tests (roundtrip/validation/encoding/analysis)
-    │   └── bin/aria-midi.cmd   # PATH shim
-    └── aria-decode/        # Zero-dependency lossless MIDI → JSON decoder
-        ├── aria_decode.py  #   v1.0.1, single file ~590 lines
-        ├── README.md      #   Full decoder documentation
-        ├── tests/         #   22 cases, 35 assertions
-        └── bin/aria-decode.cmd  # PATH shim
+    ├── aria-midi/          # Zero-dependency Python CLI: generate/validate/inspect/scale/analyze/compare
+    │   ├── aria_midi.py    #   v1.2.0 (analyze gained phrase-structure scoring)
+    │   ├── README.md       #   Full CLI documentation
+    │   ├── tests/          #   33 self-tests (roundtrip/validation/encoding/analysis/structure)
+    │   └── bin/aria-midi.cmd    # PATH shim
+    ├── aria-decode/        # Zero-dependency lossless MIDI → JSON decoder
+    │   ├── aria_decode.py  #   v1.0.1, single file ~590 lines
+    │   ├── README.md       #   Full decoder documentation
+    │   ├── tests/          #   22 cases, 35 assertions
+    │   └── bin/aria-decode.cmd  # PATH shim
+    ├── aria-report/        # Zero-dependency batch MIDI reverse-engineering report
+    │   ├── aria_report.py  #   v1.0.0 (depends on the sibling aria-decode)
+    │   ├── README.md       #   Full documentation (analysis dimensions + known limits)
+    │   ├── tests/          #   38 cases, 73 assertions
+    │   └── bin/aria-report.cmd  # PATH shim
+    └── aria-mcp/           # Zero-dependency MCP server (exposes Aria to any MCP client)
+        ├── aria_mcp.py     #   v1.0.0, hand-rolled stdio JSON-RPC 2.0
+        ├── README.md       #   Full documentation (incl. per-client config locations)
+        ├── tests/          #   39 cases, 82 assertions
+        └── bin/aria-mcp.cmd # PATH shim
+
+> Every `bin/` ships both a Windows `.cmd` and a POSIX `sh` shim (extensionless, executable bit set).
 ```
 
 ## Architecture
@@ -57,27 +69,39 @@ flowchart TB
     end
 
     subgraph Toolkit[Toolkit layer · zero-dependency Python CLI]
-        Midi[aria-midi<br/>validate · analyze · generate · inspect · scale]
+        Midi[aria-midi<br/>validate · analyze · generate · inspect · scale · compare]
         Decode[aria-decode<br/>lossless MIDI → JSON]
+        Report[aria-report<br/>batch reverse-engineering report]
+        Mcp[aria-mcp<br/>MCP server<br/>11 tools + knowledge resources]
     end
 
     subgraph Output[Artifacts]
         Song[song.json note data]
         MidiFile[(song.mid standard MIDI)]
         MidiJson[MIDI JSON]
+        MdReport[/report.md analysis report/]
     end
 
     Agent --> Compose
     Agent --> Theory
+    Agent --> Report
     Compose -->|five-step workflow| Midi
     Theory -->|scale/chord lookups| Midi
     Midi -->|validate / analyze| Song
     Midi -->|generate| MidiFile
     MidiFile --> Decode
     Decode --> MidiJson
+    Decode -->|reuses decoder| Report
+    Report -->|style / key / motifs| MdReport
+    Mcp -.->|wraps all tools| Midi
+    Mcp -.->|wraps| Decode
+    Mcp -.->|wraps| Report
+    Client[Any MCP client<br/>desktop / editor / shell-less agent] -->|JSON-RPC over stdio| Mcp
 ```
 
-Flow: one user sentence → the Agent drives the tools via skill prompts → the zero-dependency CLI computes in the toolkit layer → produces `song.json` and a standard MIDI file; `aria-decode` losslessly decodes any `.mid` back into JSON for reverse engineering / QA.
+Flow: one user sentence → the Agent drives the tools via skill prompts → the zero-dependency CLI computes in the toolkit layer → produces `song.json` and a standard MIDI file; `aria-decode` losslessly decodes any `.mid` back into JSON for reverse engineering / QA, and `aria-report` sits on top of that decode layer to batch-produce style/key/motif reports.
+
+**Cross-agent reach**: `aria-mcp` wraps the three tools plus the knowledge base into an MCP server, so **any MCP-capable client** — including GUI agents with no shell and no prompt-reading — can use the full Aria capability set, not just agents that support skill scanning or command execution.
 
 ## Quick Start
 
@@ -126,6 +150,49 @@ cat song.mid | aria-decode decode --input - > song.json  # stdin pipe
 
 Unlike `aria-midi inspect` (lossy — extracts only notes/track names/tempo), aria-decode keeps every event. Prefer aria-decode when you need tempo changes, CC/pitch bend/lyrics, SysEx, or post-generation QA. See `toolkits/aria-decode/README.md` for the full command reference and output structure.
 
+## Batch MIDI Reverse-Engineering (aria-report)
+
+`aria-report` answers "I have one (or a pile of) human-arranged `.mid` files — what style are they, what key, and how does the melody develop?" It scans a directory, runs **style detection + key inference + melodic motif extraction** on each file, and emits a Markdown report (or JSON).
+
+```bash
+aria-report report --input decode/ --output report.md      # analyze the whole directory
+aria-report report --input decode/foo.mid                  # analyze a single file
+aria-report report --input decode/ --format json           # JSON output for programmatic use
+```
+
+Typical flow: drop `.mid` files into `decode/` → `aria-report report --input decode/` → get `report.md`. It reuses the aria-decode decoder and must be installed alongside it (see `toolkits/aria-report/README.md` for the full rule tables and known limits).
+
+## Cross-Agent Reach: MCP Server (aria-mcp)
+
+The three tools above are command-line programs, which implicitly require the agent to **be able to execute processes**. `aria-mcp` wraps them plus the knowledge base into an **MCP (Model Context Protocol) server**, so any MCP-capable client can use them — including GUI agents with no shell and no way to read prompts.
+
+```bash
+python toolkits/aria-mcp/aria_mcp.py            # stdio transport, launched by the MCP client
+python toolkits/aria-mcp/aria_mcp.py --selftest # self-check
+```
+
+Register it in your client (`mcpServers` is the common key; the enclosing filename differs per client):
+
+```json
+{
+  "mcpServers": {
+    "aria": {
+      "command": "python",
+      "args": ["/absolute/path/Aria_Skills/toolkits/aria-mcp/aria_mcp.py"]
+    }
+  }
+}
+```
+
+What it exposes:
+
+- **11 tools**: `scale_list` / `chord_tones` / `snap_pitches` / `suggest_scale` / `validate_song` / `analyze_song` / `generate_midi` / `inspect_midi` / `decode_midi` / `compare_style` / `report_midi`
+- **18 resources**: every Markdown under `skills/`, served as `aria://knowledge/<path>` for **on-demand fetching**, instead of injecting the whole ~43k-token knowledge base into context at once
+
+Three design decisions worth knowing: **zero dependency** (hand-rolled stdio JSON-RPC 2.0, no official SDK, preserving "copy and run"), **content not paths** (MIDI travels as base64, since client and server may not share a filesystem), and **`isError` means the tool failed to run, not that the answer was negative** (a validation failure is a normal `ok:false` result — marking it as an error would hide the very error list the agent needs).
+
+See `toolkits/aria-mcp/README.md` for per-client config locations and full details.
+
 ## Full Composition Workflow (see the five-step workflow in skills/aria-compose/SKILL.md)
 
 ```bash
@@ -152,13 +219,17 @@ Sample output (validate):
 |----------|-------------|
 | Write/generate melodies, songs, MIDI, chord progressions | Read `skills/aria-compose/SKILL.md` and follow the five-step workflow |
 | Music theory/arrangement Q&A | Read `skills/aria-music-theory/SKILL.md` |
+| Reverse-engineer a MIDI you received | `aria-report report --input <file or dir>` (see `toolkits/aria-report/README.md`) |
+| Agent has no shell / can't read prompts | Register the `aria-mcp` MCP server (see `toolkits/aria-mcp/README.md`) |
 | CLI only, no prompts needed | Call directly per `toolkits/aria-midi/README.md` |
 
 ## Self-Test
 
 ```bash
-python toolkits/aria-midi/tests/run_tests.py    # all 23 cases pass
-python toolkits/aria-decode/tests/run_tests.py  # all 22 cases / 35 assertions pass
+python toolkits/aria-midi/tests/run_tests.py     # all 33 cases pass
+python toolkits/aria-decode/tests/run_tests.py   # all 22 cases / 35 assertions pass
+python toolkits/aria-report/tests/run_tests.py   # all 38 cases / 73 assertions pass
+python toolkits/aria-mcp/tests/run_tests.py      # all 39 cases / 82 assertions pass
 ```
 
 ## FAQ

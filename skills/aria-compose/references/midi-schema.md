@@ -25,10 +25,15 @@
 
 | 字段 | 类型 | 约束 | 默认 |
 |------|------|------|------|
+| `name` | string | **可选**。歌曲名。`generate` 用它派生输出文件名 `<歌名>.mid`，并写成 MIDI 序列名（meta `0x03`，DAW/播放器显示为曲名）。`--name` 可覆盖。文件名会清洗非法字符（`<>:"/\|?*`、控制字符、结尾点/空格），超长截断到 60 字符 | 无 |
 | `bpm` | number | 40–300 | 120 |
 | `time_signature` | object | numerator ≥1；denominator 为 2 的幂（非幂时生成回退 4/4） | 4/4 |
 | `tracks` | array | 至少 1 轨；每轨含 `notes` | 必填 |
 | `notes` | array | **旧版格式**：与 tracks 二选一，等价于单轨「Piano」 | — |
+
+> **命名与目录约定**：每首歌放独立目录，`song.json` 顶层写 `name`。这样
+> `aria-midi generate --input <歌名>/song.json` 会直接产出 `<歌名>/<歌名>.mid`，
+> 不必再敲 `--output`。详见 SKILL.md「项目布局」。
 
 ### track 字段
 

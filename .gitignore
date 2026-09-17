@@ -7,3 +7,6 @@ __pycache__/
 
 # 本地测试结果与生成产物
 output/
+
+# 测试运行时产生的临时文件（tests/run_tests.py 正常退出会自行清理，异常中断时可能残留）
+toolkits/*/tests/_tmp*

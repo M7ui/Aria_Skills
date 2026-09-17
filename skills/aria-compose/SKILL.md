@@ -15,8 +15,10 @@ metadata:
 
 ## 输出契约（必须全部交付）
 
-1. `song.json` — 音符数据（schema 见 references/midi-schema.md）
-2. `song.mid` — 标准 MIDI 文件（Type-1，TPQN=480）
+放在**以歌名命名的目录**里（见「项目布局」）：
+
+1. `<歌名>/song.json` — 音符数据，顶层 `name` = 歌名（schema 见 references/midi-schema.md）
+2. `<歌名>/<歌名>.mid` — 标准 MIDI 文件（Type-1，TPQN=480），歌名写入序列名
 3. 摘要（中文）— BPM / 调式 / 段落结构 / 音轨数 / 音符数 / 使用的和弦进行
 
 ## CLI 调用规范
@@ -34,7 +36,7 @@ metadata:
 |--------|------|--------|
 | `validate --input song.json [--strict]` | 校验 schema/音域/力度/量化/重叠 | 0 通过 / 1 有错误 |
 | `analyze --input song.json [--chords chords.json] [--key-root C4]` | 0–10 评分 + 中文改进建议 | 0 |
-| `generate --input song.json --output song.mid [--bpm 120]` | 生成标准 MIDI 文件 | 0 / 1 / 2 |
+| `generate --input song.json [--output x.mid] [--bpm 120] [--name 歌名] [--outdir 目录]` | 生成标准 MIDI 文件；`--output` 可省（由顶层 name 派生） | 0 / 1 / 2 |
 | `inspect --input song.mid` | 解析回读 .mid 自检 | 0 / 1 |
 | `scale --root C4 --type major [--list/--chord/--snap/--suggest]` | 音阶/和弦计算查表 | 0 / 2 |
 
@@ -54,20 +56,23 @@ python <SKILL.md 所在目录>/../../toolkits/aria-midi/aria_midi.py --version
 
 ### 必须执行的命令序列
 
+下面用 `<歌名>/` 表示「每首歌一个目录」的布局（见「项目布局」）。目录名与 song.json 顶层的
+`name` 保持一致。
+
 ```bash
 # 查表：音阶和和弦一律用 CLI 算，不心算
 python <SKILL.md 所在目录>/../../toolkits/aria-midi/aria_midi.py scale --root C4 --type major --list
 python <SKILL.md 所在目录>/../../toolkits/aria-midi/aria_midi.py scale --root G4 --type major --chord dom7
 
 # 校验：每次写完/改完 song.json 都要执行
-python <SKILL.md 所在目录>/../../toolkits/aria-midi/aria_midi.py validate --input song.json --strict
+python <SKILL.md 所在目录>/../../toolkits/aria-midi/aria_midi.py validate --input <歌名>/song.json --strict
 
 # 评分：低于 7 按 suggestions 改完重跑 validate
-python <SKILL.md 所在目录>/../../toolkits/aria-midi/aria_midi.py analyze --input song.json --chords chords.json
+python <SKILL.md 所在目录>/../../toolkits/aria-midi/aria_midi.py analyze --input <歌名>/song.json --chords <歌名>/chords.json
 
-# 生成与回读
-python <SKILL.md 所在目录>/../../toolkits/aria-midi/aria_midi.py generate --input song.json --output song.mid --bpm 120
-python <SKILL.md 所在目录>/../../toolkits/aria-midi/aria_midi.py inspect --input song.mid
+# 生成与回读：--output 可省，由顶层 name 派生 <歌名>/<歌名>.mid
+python <SKILL.md 所在目录>/../../toolkits/aria-midi/aria_midi.py generate --input <歌名>/song.json
+python <SKILL.md 所在目录>/../../toolkits/aria-midi/aria_midi.py inspect --input <歌名>/<歌名>.mid
 ```
 
 ### 退出码与放行条件
@@ -81,19 +86,63 @@ python <SKILL.md 所在目录>/../../toolkits/aria-midi/aria_midi.py inspect --i
 ### 输入输出约定
 
 - `validate / analyze / generate` 的 `--input -` 表示从 stdin 读 song.json
-- `generate` 必须有 `--output <file.mid>`，没有输出路径视为用法错误
+- `generate` 的 `--output` 可省：song.json 顶层有 `name`（或用 `--name` 指定）时，
+  输出派生为 `<输入目录>/<歌名>.mid`；两者都没有才视为用法错误（退出码 2）
 - 生成前确认输出目录存在；CLI 不会自动创建目录
-- 交付时保留 `song.json`、`chords.json`、`song.mid`、`inspect` 回读结果和中文摘要
+- 交付时保留 `<歌名>.json`、`<歌名>.chords.json`、`<歌名>.mid`、回读核对结果和中文摘要
+
+### 项目布局（必须遵守，否则目录会乱）
+
+**每首歌一个目录，`song.json` 顶层写 `name`。** 不要往项目根目录直接写 `song.json` ——
+固定文件名会撞名，实际使用中会演变成 `sad.song.json`、`wd222.song.json` 这类前缀混战的局面。
+
+```
+<项目>/
+└── <歌名>/                     # 目录名 = song.json 顶层的 name
+    ├── song.json              # 谱面（{"name": "<歌名>", "bpm": ..., "tracks": [...]}）
+    ├── chords.json            # 和弦进行（供 analyze 检查强拍匹配；可选）
+    ├── <歌名>.mid             # 生成物，由 name 自动派生
+    ├── build_<歌名>.py        # 生成脚本（长曲/有重复织体时用，见下）
+    └── <歌名>.html            # 自包含播放器（如已生成）
+```
+
+```bash
+# 命名一次，路径全自动 —— 无需再敲 --output
+aria-midi generate --input 未寄出的信/song.json
+#   → 未寄出的信/未寄出的信.mid（歌名同时写入 MIDI 序列名，DAW 里显示为曲名）
+```
+
+**诊断产物默认不落盘。** 回读核对、事件明细、解码结果都是「看一眼就扔」的中间物，
+占体积的绝大多数（实测一次作曲过程中它们能占 87%）。优先用管道：
+
+```bash
+aria-decode decode --input 未寄出的信/未寄出的信.mid --output - | head -c 400
+aria-midi inspect --input 未寄出的信/未寄出的信.mid        # 直接打到 stdout
+```
+
+确实需要留存时才写进歌曲目录，命名 `<歌名>.qa.json`，并在交付时说明它是可再生的。
+
+### 长曲用生成脚本，不要手搓 JSON
+
+超过约 16 小节、或伴奏有重复织体时，**写一个 `build_<歌名>.py` 生成 song.json**，而不是
+手写几百个 JSON 对象。理由：
+
+- **重复织体压成函数** —— 32 小节的左手伴奏可压缩成几行模式定义，改整段织体只需动几个数
+- **返修成本低** —— 改一处重跑即可，不必在几百行 JSON 里定位
+- **不会破坏网格** —— 手改 JSON 极易写出非 0.25 倍数的时值，得靠 validate 逐个报错才发现
+
+脚本只做「音符 → song.json」的序列化，**不做乐理计算**（音阶和弦一律用 `aria-midi scale` 查表）、
+不做校验、不写 MIDI —— 那些都交给工具链。短曲（如 4 小节）直接手写 song.json 即可。
 
 ### 生成后质检
 
 `inspect` 只回读音符/音轨名/Tempo/拍号。需要检查 Tempo 变化、CC、弯音、歌词或 SysEx 时，用同一技能包内的 `aria-decode`：
 
 ```bash
-python <SKILL.md 所在目录>/../../toolkits/aria-decode/aria_decode.py decode --input song.mid --output song.qa.json
+python <SKILL.md 所在目录>/../../toolkits/aria-decode/aria_decode.py decode --input <歌名>.mid --output -
 ```
 
-`song.qa.json` 中 `global.bpm`、`global.duration_sec`、`notes` 数量应与 song.json 一致，不一致必须回到生成步骤排查。
+核对 `global.bpm`、`global.duration_sec`、`notes` 数量与 song.json 是否一致，不一致必须回到生成步骤排查。这一步默认走 stdout，不要落盘。
 
 ## 联网查找机制（写音符前）
 
@@ -153,8 +202,8 @@ python <SKILL.md 所在目录>/../../toolkits/aria-decode/aria_decode.py decode 
 
 ### 第 5 步：验证 → 生成 → 自检（循环直到达标）
 ```bash
-aria-midi validate --input song.json --strict            # 必须 0 errors
-aria-midi analyze  --input song.json --chords chords.json --key-root C4
+aria-midi validate --input <歌名>/song.json --strict     # 必须 0 errors
+aria-midi analyze  --input <歌名>/song.json --chords <歌名>/chords.json --key-root C4
 # 放行条件：score ≥ 7 且 passed=true（技术分与音乐性分都要 ≥6），缺一回到第 4 步
 # 连贯性条件：structure_score ≥ 6（1.2.0 起新增的第三栏：乐句切分/轮廓复用/高潮位置/终止稳定），
 #   低于 6 优先看 details.structure 与 suggestions——通常是「只切出 1 个乐句」「乐句同头缺失」
@@ -162,14 +211,14 @@ aria-midi analyze  --input song.json --chords chords.json --key-root C4
 # 传 --key-root 才会检查终止稳定性（末句落主音/倒数句半终止），调式从第 1 步的需求来
 # 跳进型风格（爵士/琶音/蓝调/EDM/Lo-fi）用 --style jazz 等显式豁免级进占比约束，
 # 不要在 melodic 模式下靠「保留并记录理由」硬扛跳进扣分
-aria-midi generate --input song.json --output song.mid --bpm 120
-aria-midi inspect  --input song.mid                      # 核对音符数/BPM 往返一致
+aria-midi generate --input <歌名>/song.json             # --output 可省，派生 <歌名>/<歌名>.mid
+aria-midi inspect  --input <歌名>/<歌名>.mid             # 核对音符数/BPM 往返一致
 ```
 
 ### 第 6 步：风格锚定（对标真实案例，风格敏感时执行）
 ```bash
 # 产出与 examples/midi/ 的真实案例对比，验证风格是否跑偏
-aria-midi compare --input song.json --reference examples/midi/tropical-demo.mid
+aria-midi compare --input <歌名>/song.json --reference examples/midi/tropical-demo.mid
 # 判「风格偏离」→ 按 dimensions 里偏离的维度（尤其 step_ratio 级进占比）回第 3 步调整
 # 参考案例清单：deephouse-demo.mid(126) / tropical-demo.mid(112) / lofi-demo.mid(75)
 ```
@@ -195,14 +244,17 @@ aria-midi compare --input song.json --reference examples/midi/tropical-demo.mid
 - [ ] 强拍音符落在 chords.json 定义的和弦音上（chord_tone_rate ≥ 60%）
 - [ ] 全曲至少 2 处明显休止；力度极差 ≥ 15；最高音在 50%–80% 处
 - [ ] `generate` + `inspect` 往返：音符数、BPM、时长一致
+- [ ] 产物落在 `<歌名>/` 目录里、`song.json` 顶层有 `name`；没有往项目根目录丢 `song.json`
+- [ ] 诊断产物（回读/事件明细/解码结果）未落盘，或已落盘但标注为可再生
 - [ ] 摘要包含 BPM / 调式 / 段落 / 音轨 / 和弦进行 / 乐句图式
 
 ## 最小示例
 
-用户："写 4 小节 C 大调旋律" → 先写 chords.json（C 全曲），再写 song.json：
+用户："写 4 小节 C 大调旋律" → 建目录 `小星星/`，先写 `小星星/chords.json`（C 全曲），再写 `小星星/song.json`：
 
 ```json
 {
+  "name": "小星星",
   "bpm": 120,
   "tracks": [{
     "name": "旋律",

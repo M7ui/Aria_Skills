@@ -13,6 +13,8 @@
   - 所有子命令 JSON 进 JSON 出（generate 输出二进制 .mid 文件）
   - --input 支持 "-" 从 stdin 读取（generate/validate/analyze）
   - 退出码：0 成功 / 1 数据校验失败 / 2 用法或 IO 错误
+  - generate 的 --output 可省：song.json 顶层有 name（或给 --name）时
+    派生为 <输入目录>/<歌名>.mid，并把歌名写成 MIDI 序列名
 """
 
 import argparse
@@ -109,6 +111,46 @@ def parse_pitch(value):
 
 def pitch_name(pitch):
     return NOTE_NAMES[pitch % 12] + str(pitch // 12 - 1)
+
+
+def slugify(name, max_chars=60):
+    """把歌曲名规范化成安全的文件名主干。
+
+    中文可直接保留（UTF-8 文件系统没问题），只处理真正会出事的字符：
+    路径分隔符与 Windows 保留字符、控制字符、结尾的点/空格（Windows 会静默截断）。
+    结果为空时回退为 "song"，避免产出无名文件或路径穿越。
+    """
+    s = "".join("_" if (c in '<>:"/\\|?*' or ord(c) < 32) else c for c in str(name))
+    s = re.sub(r"\s+", " ", s).strip().strip(". ")
+    if len(s) > max_chars:                 # 多数文件系统单段上限 255 字节，中文 3 字节/字
+        s = s[:max_chars].strip()
+    return s or "song"
+
+
+def resolve_output_path(output, name, raw_name, input_path, outdir):
+    """决定 .mid 输出路径。
+
+    优先级：--output > (--name 或 song.json 顶层 name) 派生 > 报错。
+    派生规则：<outdir>/<slug(歌名)>.mid
+    --outdir 未给时取 --input 所在目录 —— 「每首歌一个目录」的布局下，
+    直接 `generate --input 未寄出的信/song.json` 就会写出
+    `未寄出的信/未寄出的信.mid`，无需重复敲路径。
+    --input 为 stdin（'-'）时退回当前目录。
+    """
+    if output:
+        return output
+    if not raw_name:
+        raise UsageError("缺少输出路径：请给 --output，"
+                         "或在 song.json 顶层写 \"name\"（也可用 --name 指定）")
+    if outdir:
+        target_dir = outdir
+    elif input_path and input_path != "-":
+        target_dir = os.path.dirname(os.path.abspath(input_path))
+    else:
+        target_dir = "."
+    if not os.path.isdir(target_dir):
+        raise UsageError(f"输出目录不存在: {target_dir}")
+    return os.path.join(target_dir, slugify(name) + ".mid")
 
 
 def snap_to_scale(pitch, root, scale_type):
@@ -258,8 +300,17 @@ def build_track_body(name, channel, program, notes, name_encoding="utf-8"):
     return struct.pack(">4sI", b"MTrk", len(body)) + bytes(body)
 
 
-def build_conductor_track(bpm, num, den):
+def build_conductor_track(bpm, num, den, seq_name=None, name_encoding="utf-8"):
     events = []
+    # 序列名（meta 0x03）：DAW/播放器会把它当作曲名显示。
+    # 不传时完全不写这个事件，未命名作品的输出保持与旧版逐字节一致。
+    if seq_name:
+        raw = _encode_name_bytes(str(seq_name), name_encoding)
+        if len(raw) > 64:                  # 与音轨名同样截断，且不切断多字节字符
+            raw = raw[:64]
+            while raw and (raw[-1] & 0xC0) == 0x80:
+                raw = raw[:-1]
+        events.append((0, b"\xff\x03" + encode_vlq(len(raw)) + raw))
     us_per_quarter = int(60_000_000 / bpm)
     events.append((0, b"\xff\x51\x03" + struct.pack(">I", us_per_quarter)[1:]))
     if den > 0 and (den & (den - 1)) == 0:
@@ -278,8 +329,8 @@ def build_conductor_track(bpm, num, den):
     return struct.pack(">4sI", b"MTrk", len(body)) + bytes(body)
 
 
-def build_midi(tracks, bpm, num=4, den=4, name_encoding="utf-8"):
-    conductor = build_conductor_track(bpm, num, den)
+def build_midi(tracks, bpm, num=4, den=4, name_encoding="utf-8", seq_name=None):
+    conductor = build_conductor_track(bpm, num, den, seq_name, name_encoding)
     midi_tracks = []
     for t in tracks:
         name = str(t.get("name", "Track"))
@@ -448,19 +499,28 @@ def cmd_generate(args):
     num = int(song.get("time_signature", {}).get("numerator", 4)) if isinstance(song.get("time_signature"), dict) else 4
     den = int(song.get("time_signature", {}).get("denominator", 4)) if isinstance(song.get("time_signature"), dict) else 4
     name_encoding = resolve_name_encoding(args.name_encoding)
-    data = build_midi(tracks, bpm, num, den, name_encoding)
+    # 歌曲名：--name 优先于 song.json 顶层的 name。同时用于派生文件名与写入序列名。
+    raw_name = args.name or song.get("name")
+    out_path = resolve_output_path(args.output, raw_name, raw_name,
+                                   args.input, args.outdir)
+    data = build_midi(tracks, bpm, num, den, name_encoding,
+                      seq_name=raw_name or None)
+    out_dir = os.path.dirname(os.path.abspath(out_path))
+    if not os.path.isdir(out_dir):
+        raise UsageError(f"输出目录不存在: {out_dir}")
     try:
-        with open(args.output, "wb") as f:
+        with open(out_path, "wb") as f:
             f.write(data)
     except OSError as e:
         raise UsageError(f"无法写入输出文件: {e}")
     total = sum(len(t["notes"]) for t in tracks)
     print(json.dumps({
         "ok": True,
-        "output": args.output,
+        "output": out_path,
         "format": "MIDI Type-1",
         "tpqn": TPQN,
         "bpm": bpm,
+        "name": slugify(raw_name) if raw_name else None,
         "name_encoding": name_encoding,
         "tracks": [{"name": t["name"], "program": t["program"], "notes": len(t["notes"])} for t in tracks],
         "note_count": total,
@@ -1172,12 +1232,14 @@ def build_parser():
     parser = argparse.ArgumentParser(
         prog="aria-midi",
         description="Aria Skills 执行层：零依赖 MIDI 工具包（generate/validate/inspect/scale/analyze）")
-    parser.add_argument("--version", action="version", version="aria-midi 1.2.0")
+    parser.add_argument("--version", action="version", version="aria-midi 1.3.0")
     sub = parser.add_subparsers(dest="cmd", required=True, metavar="<子命令>")
 
     p = sub.add_parser("generate", help="song.json → 标准 MIDI 文件（Type-1, TPQN=480）")
     p.add_argument("--input", required=True, help="song.json 路径，'-' 读 stdin")
-    p.add_argument("--output", required=True, help="输出 .mid 文件路径")
+    p.add_argument("--output", help="输出 .mid 路径；省略时由歌曲名派生 <歌名>.mid")
+    p.add_argument("--name", help="歌曲名（覆盖 song.json 顶层的 name）；决定派生文件名与序列名")
+    p.add_argument("--outdir", help="派生输出时的目录；默认取 --input 所在目录")
     p.add_argument("--bpm", type=int, default=None, help="覆盖 song.json 中的 BPM（40-300）")
     p.add_argument("--name-encoding", default="auto",
                    help="音轨名编码: auto(默认, Windows 用系统 ANSI 码页如 GBK)/utf-8/gbk/...")
