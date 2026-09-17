@@ -1,63 +1,234 @@
-# Aria — Portable Music Skills Pack
+# Aria — A Portable Music Skill Pack
 
-> An AI music creation skill pack: **Skills (prompts) + Toolkit** in one package.
-> Headless composition: no Node server, no LLM API calls.
+> A music capability pack for AI agents: **2 skills + 4 zero-dependency tools**.
+> It lets a text-only coding agent compose music and dissect MIDI files — fully offline, no pip installs.
 
-[English](README.en.md) | [简体中文](README.md)
+[简体中文](README.md) | [English](README.en.md)
 
 ## Features
 
-- **Natural-language composition**: say one sentence, and the Agent produces `song.json` + a standard MIDI file through a five-step workflow
-- **Zero-dependency execution layer**: Python standard library only (Python 3.8+), callable directly from Bash by any Agent
-- **JSON in/out + exit-code contract**: `0 success / 1 data error / 2 usage error`, results are programmatically testable
-- **Quality loop**: `validate --strict` enforces 0 errors; `analyze` scores 0–10 with actionable Chinese suggestions — no release below the bar
-- **Fully offline**: scale/chord lookups are computed by the built-in CLI, no network or external API required
-- **Portable**: `install.py` deploys to `~/.agents` in one step for skills-scanning Agent tools
+- **Compose in natural language**: one sentence in, the agent follows a five-step workflow and produces `song.json` + a standard MIDI file
+- **Zero-dependency execution layer**: Python standard library only (3.8+), callable from any agent with shell access
+- **JSON in / JSON out with an exit-code contract**: `0 success / 1 data error / 2 usage error`, so results are programmatically checkable
+- **Quality loop**: `validate --strict` enforces zero errors, `analyze` scores 0–10 and returns concrete suggestions — nothing ships below the bar
+- **Cross-agent**: MCP-capable clients (including GUI agents with no shell) can call it directly; skill-scanning tools discover it automatically
+- **Fully offline**: scales and chords are computed by the bundled CLI, no network or external API
+- **Optional web research**: when the style is unfamiliar or real-world examples are needed, it runs 2–3 rounds of fuzzy search in Chinese and English against no particular site, and only folds sources into the prompt after they clear a quality bar
 
 ## Requirements
 
-- Python 3.8+ (standard library only, no pip dependencies)
-- Platforms: Windows / macOS / Linux (on Chinese Windows, track names default to GBK for player/DAW compatibility)
+- Python 3.8+
+- Windows / macOS / Linux
+- On Chinese Windows, track names default to GBK so players and DAWs display them correctly
 
-## Contents
+## Quick Start
+
+> The commands below run from the **package root**. Your song directories live wherever you work — they don't have to sit inside the package.
+
+```bash
+# Option 1: for skill-scanning agents — deploy to ~/.agents (idempotent, re-runnable)
+python install.py
+
+# Option 2: zero install, call the CLI directly
+python toolkits/aria-midi/aria_midi.py scale --root C4 --type major --list
+
+# Add toolkits/*/bin to PATH for short commands (.cmd on Windows, extensionless shim elsewhere)
+aria-midi generate --input 未寄出的信/song.json
+```
+
+`install.py` deploys the two skills and four toolkits into `~/.agents/` without touching anything else there. Verify with `Test-Path ~/.agents/skills/aria-compose/SKILL.md` (PowerShell) or `ls ~/.agents/skills/aria-compose/SKILL.md`.
+
+## Project Layout & Naming Convention
+
+**One directory per song, with `name` at the top level of `song.json`.** Do not drop a fixed-name `song.json` into your project root — fixed names inevitably collide, and a few songs in you end up with a prefix free-for-all like `sad.song.json`, `wd222.song.json`.
 
 ```
-.agent/
-├── AGENTS.md              # Cross-tool entry facade (auto-discovered by AGENTS.md-aware tools)
-├── README.md              # Chinese README
-├── README.en.md           # English README (this file)
-├── LICENSE                # MIT License
-├── install.py             # Self-installer: deploys to ~/.agents for skills scanning
+<project>/
+└── 未寄出的信/                  # directory name = the `name` inside song.json
+    ├── song.json               # the score: {"name": "未寄出的信", "bpm": ..., "tracks": [...]}
+    ├── chords.json             # chord progression (optional; lets analyze check strong-beat matching)
+    ├── 未寄出的信.mid           # generated, filename derived from `name`
+    ├── build_未寄出的信.py      # build script (for long pieces / repeated textures, see below)
+    └── 未寄出的信.html          # self-contained player (if generated)
+```
+
+**Name it once, every path follows** — `generate`'s `--output` is optional and derives from the top-level `name`:
+
+```bash
+python toolkits/aria-midi/aria_midi.py generate --input 未寄出的信/song.json
+#   → 未寄出的信/未寄出的信.mid
+```
+
+The song name is also written into the MIDI **sequence name** (meta `0x03`), so DAWs display it as the title. Precedence: `--output` > `--name` > top-level `name` > error (exit code 2). The derived directory defaults to the directory of `--input` and can be overridden with `--outdir`. Filenames are sanitized for `<>:"/\|?*`, control characters, and trailing dots/spaces (Windows silently truncates those), truncated to 60 characters, with CJK preserved as-is.
+
+**Diagnostics are not persisted by default.** Read-back checks, event dumps, and decode results are all throwaway intermediates — in practice they accounted for 87% of the bytes produced while composing one piece. Prefer pipes:
+
+```bash
+python toolkits/aria-decode/aria_decode.py decode --input 未寄出的信/未寄出的信.mid --output -
+python toolkits/aria-midi/aria_midi.py inspect --input 未寄出的信/未寄出的信.mid
+```
+
+When you do need to keep one, put it in the song directory as `<name>.qa.json` and note in your handoff that it is regenerable.
+
+**Long pieces: use a build script, don't hand-write JSON.** Past roughly 16 bars, or whenever the accompaniment has repeated textures, write a `build_<name>.py` that emits `song.json`: repeated textures collapse into functions, a revision is one edit plus a re-run, and you can't accidentally break the 0.25-beat grid by hand. The script only serializes notes into `song.json` — it does **no** music theory (look scales and chords up with `aria-midi scale`), no validation, and no MIDI writing. All of that belongs to the toolchain. Short pieces can be hand-written directly.
+
+## Composition Workflow
+
+The full methodology lives in [`skills/aria-compose/SKILL.md`](skills/aria-compose/SKILL.md) (five-step workflow, seven composition rules, pattern library).
+
+> The commands below run from the **package root** (`toolkits/...` is package-relative). `未寄出的信/` is your song directory — keep it wherever you work and substitute the real path.
+
+```bash
+# 1. Look up scales and chords with the CLI — never do the theory in your head
+python toolkits/aria-midi/aria_midi.py scale --root A4 --type minor --list
+python toolkits/aria-midi/aria_midi.py scale --root G4 --type major --chord dom7
+
+# 2. Write 未寄出的信/song.json and 未寄出的信/chords.json
+#    Schema: skills/aria-compose/references/midi-schema.md
+
+# 3. Strict validation: must be ok=true with errors=[]
+python toolkits/aria-midi/aria_midi.py validate --input 未寄出的信/song.json --strict
+
+# 4. Quality score: proceed only when score >= 7 and passed=true;
+#    otherwise fix per the suggestions and re-run step 3
+python toolkits/aria-midi/aria_midi.py analyze \
+    --input 未寄出的信/song.json --chords 未寄出的信/chords.json --key-root D4
+
+# 5. Generate MIDI (--output optional, derived from the top-level name)
+python toolkits/aria-midi/aria_midi.py generate --input 未寄出的信/song.json
+
+# 6. Read back and verify note count / BPM / duration
+python toolkits/aria-midi/aria_midi.py inspect --input 未寄出的信/未寄出的信.mid
+```
+
+Re-run `validate --strict` after **every** edit to `song.json` — never change the file without validating it.
+
+**Release criteria**: `score >= 7` and `passed=true` (both technical and musicality sub-scores at ≥6); `structure_score >= 6` checks phrase segmentation, contour reuse, climax placement, and cadential stability. Leap-heavy styles (jazz / arpeggio / blues / EDM / lo-fi) should pass `--style jazz` etc. to explicitly waive the stepwise-motion constraint.
+
+## Tools
+
+All four depend only on the standard library, take JSON in and produce JSON out, and share the same exit-code contract. What differs is scope:
+
+### aria-midi — the composition spine
+
+`generate` / `validate` / `inspect` / `scale` / `analyze` / `compare`. **All music math lives here** (13 scale types, 14 chord types, scoring, MIDI encode/decode) — don't compute any of it by hand.
+
+The workhorses are `scale --chord` for chord tones, `validate --strict` to enforce the grid and ranges, and `analyze` for a score plus concrete suggestions.
+
+### aria-decode — lossless MIDI → JSON
+
+Decodes any `.mid` **losslessly** into structured JSON that reverse engineering, format conversion, and post-generation QA can consume directly.
+
+- **Every event**: meta / CC / pitch bend / lyrics / SysEx / system messages all preserved
+- **Both time bases**: PPQN and SMPTE (including 29.97 drop-frame)
+- **Accurate timing**: tempo changes are resolved across tracks on a global timeline into seconds
+
+The difference from `aria-midi inspect` (lossy — notes, track names and tempo only): **use aria-decode when you need tempo changes, CC, pitch bend, lyrics, or SysEx.**
+
+```bash
+python toolkits/aria-decode/aria_decode.py decode --input x.mid --output -       # full decode to stdout
+python toolkits/aria-decode/aria_decode.py decode --input x.mid --no-events      # overview: header + global + notes
+python toolkits/aria-decode/aria_decode.py decode --input x.mid --no-notes       # event details only
+```
+
+### aria-report — batch MIDI reverse engineering
+
+Scans a directory and runs **style detection + key inference + melodic motif analysis** on every `.mid`, emitting a Markdown or JSON report. Built for "I got a human-arranged MIDI — what style is it, and how does the melody develop?"
+
+```bash
+python toolkits/aria-report/aria_report.py report --input decode/ --output report.md
+python toolkits/aria-report/aria_report.py report --input decode/foo.mid          # single file
+python toolkits/aria-report/aria_report.py report --input decode/ --format json   # for programs
+```
+
+**Known limitation**: the melody track is chosen as the one with the highest average pitch. If a single track packs bass, chords, and melody together (common in exported files), the extracted "motifs" will be artifacts of cross-voice leaps. Split the voices with `aria-decode` first, or use a multi-track MIDI. The full rule tables are in `toolkits/aria-report/README.md`.
+
+### aria-mcp — MCP server
+
+The three tools above are command-line programs, which implicitly require the agent to **be able to execute processes**. `aria-mcp` wraps them plus the knowledge base into an [MCP](https://modelcontextprotocol.io) server, so any MCP-capable client can call them — **including GUI agents with no shell and no way to read prompts**.
+
+- **11 tools**: `scale_list` / `chord_tones` / `snap_pitches` / `suggest_scale` / `validate_song` / `analyze_song` / `generate_midi` / `inspect_midi` / `decode_midi` / `compare_style` / `report_midi`
+- **18 resources**: every Markdown under `skills/`, served as `aria://knowledge/<path>` for **on-demand fetching**, instead of injecting the whole ~43k-token knowledge base into context at once
+
+Three design decisions: **zero dependency** (hand-rolled stdio JSON-RPC 2.0 with no official SDK, preserving "copy and run"), **content not paths** (MIDI travels as base64, since client and server may not share a filesystem), and **`isError` means the tool failed to run, not that the answer was negative** (a validation failure is a normal `ok:false` result — marking it as an error would hide the very error list the agent needs).
+
+```bash
+python toolkits/aria-mcp/aria_mcp.py --selftest   # self-check
+```
+
+## Four Ways to Connect an Agent
+
+| Method | Best for | How |
+|--------|----------|-----|
+| **MCP** | Widest reach — **recommended** | Register `aria-mcp` as a stdio MCP server. Needs neither a shell nor prompt-reading |
+| **Skill scanning** | ZCode / Claude Code and similar | `python install.py` deploys to `~/.agents/`, discovered at startup |
+| **Explicit load** | Any agent | Have the agent read a `SKILL.md`: composing → `skills/aria-compose/SKILL.md`; theory → `skills/aria-music-theory/SKILL.md` |
+| **CLI only** | No prompts needed | Call the commands directly per each toolkit's README |
+
+**MCP registration** (`mcpServers` is the common key; the enclosing filename differs per client):
+
+```json
+{
+  "mcpServers": {
+    "aria": {
+      "command": "python",
+      "args": ["/absolute/path/Aria_Skills/toolkits/aria-mcp/aria_mcp.py"]
+    }
+  }
+}
+```
+
+Per-client config locations and full details: [`toolkits/aria-mcp/README.md`](toolkits/aria-mcp/README.md).
+
+**CLI resolution order** (for agents): try the short command `aria-midi <subcommand>` on PATH first; if absent, use the package-relative form `python <package-root>/toolkits/aria-midi/aria_midi.py <subcommand>`; never guess the path — confirm it with `find toolkits -name aria_midi.py` first.
+
+## CLI Reference
+
+| Subcommand | Purpose | Exit codes |
+|------------|---------|-----------|
+| `aria-midi validate --input song.json [--strict]` | Check schema / ranges / velocity / quantization / overlaps | 0 pass / 1 errors |
+| `aria-midi analyze --input song.json [--chords c.json] [--key-root C4] [--style edm]` | 0–10 score (technical / musicality / structure) + suggestions | 0 |
+| `aria-midi generate --input song.json [--output x.mid] [--bpm 120] [--name 歌名] [--outdir dir]` | Write a standard MIDI file (Type-1, TPQN=480); `--output` optional | 0 / 1 / 2 |
+| `aria-midi inspect --input x.mid` | Parse a `.mid` back (lossy) | 0 / 1 |
+| `aria-midi scale --root C4 --type major [--list\|--chord maj7\|--snap\|--suggest]` | Scale / chord lookups and key inference | 0 / 2 |
+| `aria-midi compare --input song.json --reference ref.mid` | Style anchoring: your output vs a reference case | 0 / 1 / 2 |
+| `aria-decode decode --input x.mid [--output f.json] [--no-events\|--no-notes]` | Lossless MIDI → JSON | 0 / 1 / 2 |
+| `aria-report report --input <dir or file.mid> [--output r.md] [--format md\|json]` | Batch reverse-engineering report | 0 / 1 / 2 |
+| `aria-mcp` | MCP server (stdio), launched by the client | — |
+
+**Conventions**: `--input -` reads from stdin; without `--output` the result goes to stdout as UTF-8; `--version` prints the version. If your Windows console shows mojibake, set `PYTHONIOENCODING=utf-8`.
+
+**Exit codes**: `0` success / `1` data error (read `errors` / `warnings`, fix, re-run) / `2` usage or IO error (check arguments, paths, output directory).
+
+`validate / analyze / generate` accept `--input -` for JSON, and `aria-decode` takes MIDI on stdin:
+
+```bash
+cat 未寄出的信/song.json | python toolkits/aria-midi/aria_midi.py validate --input - --strict
+cat x.mid | python toolkits/aria-decode/aria_decode.py decode --input - --no-events
+```
+
+## Layout & Architecture
+
+```
+Aria_Skills/
+├── AGENTS.md              # Cross-tool entry point (picked up by AGENTS.md-aware tools)
+├── install.py             # Self-installer: deploys to ~/.agents for skill scanning
+├── examples/midi/         # Real MIDI cases (Deep House / Tropical / Lo-fi) for `compare`
+├── decode/                # Drop-in directory for MIDI to dissect (aria-report input)
 ├── skills/
-│   ├── aria-compose/       # Composition workflow: natural language → song.json → MIDI (pattern library / rules / examples)
-│   │   └── references/    #   composition-rules / pattern-library / midi-schema / examples
-│   └── aria-music-theory/  # Music theory Q&A: scales/chords/progressions + 5 style references (pop/EDM/jazz/tropical/techniques)
+│   ├── aria-compose/      # Composition workflow: natural language → song.json → MIDI
+│   │   └── references/    #   composition-rules / pattern-library / melody-chord-writing / midi-schema / examples
+│   └── aria-music-theory/ # Music theory Q&A: scales/chords/progressions + style references
 └── toolkits/
-    ├── aria-midi/          # Zero-dependency Python CLI: generate/validate/inspect/scale/analyze/compare
-    │   ├── aria_midi.py    #   v1.2.0 (analyze gained phrase-structure scoring)
-    │   ├── README.md       #   Full CLI documentation
-    │   ├── tests/          #   33 self-tests (roundtrip/validation/encoding/analysis/structure)
-    │   └── bin/aria-midi.cmd    # PATH shim
-    ├── aria-decode/        # Zero-dependency lossless MIDI → JSON decoder
-    │   ├── aria_decode.py  #   v1.0.1, single file ~590 lines
-    │   ├── README.md       #   Full decoder documentation
-    │   ├── tests/          #   22 cases, 35 assertions
-    │   └── bin/aria-decode.cmd  # PATH shim
-    ├── aria-report/        # Zero-dependency batch MIDI reverse-engineering report
-    │   ├── aria_report.py  #   v1.0.0 (depends on the sibling aria-decode)
-    │   ├── README.md       #   Full documentation (analysis dimensions + known limits)
-    │   ├── tests/          #   38 cases, 73 assertions
-    │   └── bin/aria-report.cmd  # PATH shim
-    └── aria-mcp/           # Zero-dependency MCP server (exposes Aria to any MCP client)
-        ├── aria_mcp.py     #   v1.0.0, hand-rolled stdio JSON-RPC 2.0
-        ├── README.md       #   Full documentation (incl. per-client config locations)
-        ├── tests/          #   39 cases, 82 assertions
-        └── bin/aria-mcp.cmd # PATH shim
-
-> Every `bin/` ships both a Windows `.cmd` and a POSIX `sh` shim (extensionless, executable bit set).
+    ├── aria-midi/         # Composition spine       v1.3.0  45 cases
+    ├── aria-decode/       # Lossless MIDI → JSON    v1.0.1  22 cases, 35 assertions
+    ├── aria-report/       # Batch RE report         v1.0.0  38 cases, 73 assertions
+    └── aria-mcp/          # MCP server              v1.0.0  39 cases, 82 assertions
 ```
 
-## Architecture
+Every toolkit has the same shape: the main program + `README.md` (full docs) + `tests/run_tests.py` + `bin/` (PATH shims — `.cmd` on Windows, an extensionless POSIX script elsewhere).
+
+**Dependencies**: `aria-report` needs the sibling `aria-decode`; `aria-mcp` needs the other three toolkits and the sibling `skills/` knowledge base. Deploy or copy the whole package — don't take one piece in isolation.
 
 ```mermaid
 flowchart TB
@@ -99,155 +270,34 @@ flowchart TB
     Client[Any MCP client<br/>desktop / editor / shell-less agent] -->|JSON-RPC over stdio| Mcp
 ```
 
-Flow: one user sentence → the Agent drives the tools via skill prompts → the zero-dependency CLI computes in the toolkit layer → produces `song.json` and a standard MIDI file; `aria-decode` losslessly decodes any `.mid` back into JSON for reverse engineering / QA, and `aria-report` sits on top of that decode layer to batch-produce style/key/motif reports.
+## FAQ
 
-**Cross-agent reach**: `aria-mcp` wraps the three tools plus the knowledge base into an MCP server, so **any MCP-capable client** — including GUI agents with no shell and no prompt-reading — can use the full Aria capability set, not just agents that support skill scanning or command execution.
-
-## Quick Start
-
-```bash
-# 1. Install to ~/.agents (auto-discovery for skills-scanning tools; idempotent, re-runnable)
-python install.py
-
-# 2. Use the CLI directly (zero installation)
-python toolkits/aria-midi/aria_midi.py scale --root C4 --type major --list
-
-# 3. Or add to PATH and use the short command
-aria-midi generate --input song.json --output song.mid --bpm 120
-
-# 4. Reverse-decode a MIDI file
-aria-decode decode --input song.mid --output song.json
-```
-
-## CLI Subcommand Reference
-
-| Subcommand | Purpose | Exit code |
-|------------|---------|-----------|
-| `validate --input song.json [--strict]` | Validate schema/range/velocity/quantization/overlap | 0 pass / 1 errors |
-| `analyze --input song.json [--chords chords.json] [--key-root C4]` | Score 0–10 + improvement suggestions | 0 |
-| `generate --input song.json --output song.mid [--bpm 120]` | Generate a standard MIDI file (Type-1, TPQN=480) | 0 / 1 / 2 |
-| `inspect --input song.mid` | Parse a .mid back to JSON for self-check | 0 / 1 |
-| `scale --root C4 --type major [--list/--chord/--snap/--suggest]` | Scale/chord lookups (13 scales, 14 chords) | 0 / 2 |
-
-All subcommands take JSON in and produce JSON out; `--input -` reads from stdin; `aria-midi --version` shows the version.
-
-## MIDI → JSON Decoding (aria-decode)
-
-`aria-decode` answers "what is actually inside this `.mid`?" by losslessly decoding any MIDI file into structured JSON for reverse engineering, format conversion, and post-generation QA.
-
-- **Every event**: meta / CC / pitch bend / lyrics / SysEx / system messages are kept, not just notes
-- **Dual timing**: both PPQN and SMPTE (including 29.97 drop-frame) are supported
-- **Exact time**: tempo changes are converted to seconds on a global timeline across tracks; notes include `start_time` / `end_time`
-- **Readable mappings**: GM program names (128), standard CC controller names, and pitch names (C4 etc.)
-
-```bash
-aria-decode decode --input song.mid                      # full decode to stdout
-aria-decode decode --input song.mid --output song.json   # full decode to a JSON file
-aria-decode decode --input song.mid --no-events          # quick overview: header + global + notes
-aria-decode decode --input song.mid --no-notes           # event details only
-cat song.mid | aria-decode decode --input - > song.json  # stdin pipe
-```
-
-Unlike `aria-midi inspect` (lossy — extracts only notes/track names/tempo), aria-decode keeps every event. Prefer aria-decode when you need tempo changes, CC/pitch bend/lyrics, SysEx, or post-generation QA. See `toolkits/aria-decode/README.md` for the full command reference and output structure.
-
-## Batch MIDI Reverse-Engineering (aria-report)
-
-`aria-report` answers "I have one (or a pile of) human-arranged `.mid` files — what style are they, what key, and how does the melody develop?" It scans a directory, runs **style detection + key inference + melodic motif extraction** on each file, and emits a Markdown report (or JSON).
-
-```bash
-aria-report report --input decode/ --output report.md      # analyze the whole directory
-aria-report report --input decode/foo.mid                  # analyze a single file
-aria-report report --input decode/ --format json           # JSON output for programmatic use
-```
-
-Typical flow: drop `.mid` files into `decode/` → `aria-report report --input decode/` → get `report.md`. It reuses the aria-decode decoder and must be installed alongside it (see `toolkits/aria-report/README.md` for the full rule tables and known limits).
-
-## Cross-Agent Reach: MCP Server (aria-mcp)
-
-The three tools above are command-line programs, which implicitly require the agent to **be able to execute processes**. `aria-mcp` wraps them plus the knowledge base into an **MCP (Model Context Protocol) server**, so any MCP-capable client can use them — including GUI agents with no shell and no way to read prompts.
-
-```bash
-python toolkits/aria-mcp/aria_mcp.py            # stdio transport, launched by the MCP client
-python toolkits/aria-mcp/aria_mcp.py --selftest # self-check
-```
-
-Register it in your client (`mcpServers` is the common key; the enclosing filename differs per client):
-
-```json
-{
-  "mcpServers": {
-    "aria": {
-      "command": "python",
-      "args": ["/absolute/path/Aria_Skills/toolkits/aria-mcp/aria_mcp.py"]
-    }
-  }
-}
-```
-
-What it exposes:
-
-- **11 tools**: `scale_list` / `chord_tones` / `snap_pitches` / `suggest_scale` / `validate_song` / `analyze_song` / `generate_midi` / `inspect_midi` / `decode_midi` / `compare_style` / `report_midi`
-- **18 resources**: every Markdown under `skills/`, served as `aria://knowledge/<path>` for **on-demand fetching**, instead of injecting the whole ~43k-token knowledge base into context at once
-
-Three design decisions worth knowing: **zero dependency** (hand-rolled stdio JSON-RPC 2.0, no official SDK, preserving "copy and run"), **content not paths** (MIDI travels as base64, since client and server may not share a filesystem), and **`isError` means the tool failed to run, not that the answer was negative** (a validation failure is a normal `ok:false` result — marking it as an error would hide the very error list the agent needs).
-
-See `toolkits/aria-mcp/README.md` for per-client config locations and full details.
-
-## Full Composition Workflow (see the five-step workflow in skills/aria-compose/SKILL.md)
-
-```bash
-aria-midi validate --input song.json --strict   # Step 1: must have 0 errors
-aria-midi analyze  --input song.json --chords chords.json   # Step 2: score ≥ 7
-aria-midi generate --input song.json --output song.mid      # Step 3: generate MIDI
-aria-midi inspect  --input song.mid                         # Step 4: roundtrip self-check
-```
-
-Sample output (validate):
-
-```json
-{
-  "ok": true,
-  "errors": [],
-  "warnings": [],
-  "stats": {"bpm": 120, "track_count": 2, "note_count": 20, "total_beats": 32.0, "pitch_min": 36, "pitch_max": 74}
-}
-```
-
-## How to Use the Skills
-
-| Scenario | What to use |
-|----------|-------------|
-| Write/generate melodies, songs, MIDI, chord progressions | Read `skills/aria-compose/SKILL.md` and follow the five-step workflow |
-| Music theory/arrangement Q&A | Read `skills/aria-music-theory/SKILL.md` |
-| Reverse-engineer a MIDI you received | `aria-report report --input <file or dir>` (see `toolkits/aria-report/README.md`) |
-| Agent has no shell / can't read prompts | Register the `aria-mcp` MCP server (see `toolkits/aria-mcp/README.md`) |
-| CLI only, no prompts needed | Call directly per `toolkits/aria-midi/README.md` |
+| Question | Answer |
+|----------|--------|
+| Track names garbled in a Windows player? | `generate` defaults to `--name-encoding auto`: GBK on Chinese Windows, UTF-8 elsewhere. Override with `--name-encoding` |
+| Notes not on the 0.25 grid? | Non-strict `validate` only warns; `--strict` treats it as an error. `start_beat` / `duration` must be multiples of 0.25 |
+| Low `analyze` score? | Follow the suggestions: chord tones on strong beats, stepwise ratio, velocity arcs, rhythmic breathing, duration variety |
+| Is `analyze` accurate for multi-track pieces? | By default it scores only the melody track (highest average pitch) to keep accompaniment from polluting the result. Use `--track` to pick one, `--all-tracks` to merge them |
+| A jazz or arpeggio melody is flagged for too many leaps? | Add `--style jazz` / `arpeggio` / `blues` / `edm` / `lofi` to waive the stepwise-motion constraint |
+| `aria-midi: command not found` | `toolkits/aria-midi/bin` isn't on PATH. Use the full Python path, or add `bin` to PATH |
+| `python` not found | Not installed, or not on PATH. Use the full interpreter path |
+| `inspect` reports SMPTE unsupported | `aria-midi inspect` only handles PPQN; use `aria-decode decode` for the full timeline |
+| Edited `SKILL.md` but nothing changed? | Skill-scanning tools need `python install.py` re-run to redeploy into `~/.agents` |
 
 ## Self-Test
 
 ```bash
-python toolkits/aria-midi/tests/run_tests.py     # all 33 cases pass
+python toolkits/aria-midi/tests/run_tests.py     # all 45 cases pass
 python toolkits/aria-decode/tests/run_tests.py   # all 22 cases / 35 assertions pass
 python toolkits/aria-report/tests/run_tests.py   # all 38 cases / 73 assertions pass
 python toolkits/aria-mcp/tests/run_tests.py      # all 39 cases / 82 assertions pass
 ```
 
-## FAQ
-
-| Question | Answer |
-|----------|--------|
-| Track names garbled in Windows players? | `generate` defaults to `--name-encoding auto` — GBK on Chinese Windows, UTF-8 elsewhere; override with `--name-encoding` |
-| Low `analyze` score? | Follow the suggestions in the output: chord tones on strong beats, velocity arcs, rhythmic breathing, rhythmic variety |
-| Notes not on the 0.25 grid? | Non-strict `validate` only warns; add `--strict` to treat it as an error; start_beat/duration must be multiples of 0.25 |
-| Multi-track analysis inaccurate? | Known limitation: `analyze` merges all tracks, including accompaniment; treat the melody track as the primary reference |
-| Skill changes not taking effect? | This pack is packaged from `skills-source/`; edit the source files and repackage — do not edit this pack directly (except install.py) |
-
 ## License
 
-This project is open-sourced under the **MIT License**. See [LICENSE](LICENSE).
+Released under the **MIT License** — see [LICENSE](LICENSE).
 Copyright (c) 2026 Mark7us
 
-## Source of Truth
+---
 
-This pack is generated from `skills-source/` (via `package_to_agent.py`).
-Edit skills in the source workspace and repackage; do not edit this pack directly (except install.py).
+This repository is the maintained version; edit it directly. It was originally packaged from the earlier `amr-*` lineage, which has since diverged — don't edit the old workspace.
