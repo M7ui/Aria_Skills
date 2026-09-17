@@ -229,6 +229,7 @@ Aria_Skills/
 ├── install.py             # Self-installer: deploys to ~/.agents for skill scanning
 ├── examples/midi/         # Real MIDI cases (Deep House / Tropical / Lo-fi) for `compare`
 ├── decode/                # Drop-in directory for MIDI to dissect (aria-report input)
+├── docs/                  # Analysis: human-vs-machine report + reproducible measure.py
 ├── skills/
 │   ├── aria-compose/      # Composition workflow: natural language → song.json → MIDI
 │   │   └── references/    #   composition-rules / pattern-library / melody-chord-writing / midi-schema / examples

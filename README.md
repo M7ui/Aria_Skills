@@ -228,6 +228,7 @@ Aria_Skills/
 ├── install.py             # 自安装器：部署到 ~/.agents 供 skills 扫描
 ├── examples/midi/         # 真实 MIDI 案例（Deep House / Tropical / Lo-fi），供 compare 锚定
 ├── decode/                # 待拆解 MIDI 输入目录（aria-report 分析入口）
+├── docs/                  # 分析报告：人机分析报告.md + measure.py（可复现测量脚本）
 ├── skills/
 │   ├── aria-compose/      # 作曲工作流：自然语言 → song.json → MIDI
 │   │   └── references/    #   composition-rules / pattern-library / melody-chord-writing / midi-schema / examples
