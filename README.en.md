@@ -237,7 +237,7 @@ Aria_Skills/
     ├── aria-midi/         # Composition spine       v1.3.0  45 cases
     ├── aria-decode/       # Lossless MIDI → JSON    v1.0.1  22 cases, 35 assertions
     ├── aria-report/       # Batch RE report         v1.0.0  38 cases, 73 assertions
-    ├── aria-roll/         # Piano-roll renderer (HTML/SVG)  v1.0.0  29 cases, 45 assertions
+    ├── aria-roll/         # Piano-roll renderer (HTML/SVG)  v1.0.0  31 cases, 50 assertions
     └── aria-mcp/          # MCP server              v1.0.0  40 cases, 87 assertions
 ```
 
@@ -308,7 +308,7 @@ flowchart TB
 python toolkits/aria-midi/tests/run_tests.py     # all 45 cases pass
 python toolkits/aria-decode/tests/run_tests.py   # all 22 cases / 35 assertions pass
 python toolkits/aria-report/tests/run_tests.py   # all 38 cases / 73 assertions pass
-python toolkits/aria-roll/tests/run_tests.py     # all 29 cases / 45 assertions pass
+python toolkits/aria-roll/tests/run_tests.py     # all 31 cases / 50 assertions pass
 python toolkits/aria-mcp/tests/run_tests.py      # all 40 cases / 87 assertions pass
 ```
 

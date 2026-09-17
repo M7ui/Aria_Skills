@@ -180,6 +180,29 @@ def test_html_self_contained():
     check("含诊断钩子 __aria", "__aria" in h)
 
 
+def test_drum_synth_not_regressed_to_noise_lowpass():
+    """防回归：底鼓曾经是「白噪声 + 120Hz 低通」，实测比镲片低约 23 dB、听不见。
+
+    白噪声能量铺满全频，只留 120Hz 等于扔掉 99% 功率，且噪声无音高，
+    发不出底鼓要的"砰"。必须是正弦下扫。这条测试锁住那次修复。
+    """
+    h = aria_roll.render_html(aria_roll._from_song(demo_song(), "x.json"))
+    check("含按 GM 鼓号分型的打击乐合成", "drumKind" in h and "playDrum" in h)
+    check("底鼓用正弦下扫（而非低频噪声）",
+          "exponentialRampToValueAtTime(48" in h and "o.type = 'sine'" in h, "未见下扫")
+    check("已移除「pitch<40 走 lowpass」的错误分支",
+          "? 'lowpass'" not in h and '"lowpass"' not in h, "旧逻辑仍在")
+
+
+def test_master_bus_present():
+    """防回归：鼓叠加实测峰值可达 5.0，必须有限幅总线，否则硬削波。"""
+    h = aria_roll.render_html(aria_roll._from_song(demo_song(), "x.json"))
+    check("含总线限幅（Gain + DynamicsCompressor）",
+          "masterBus" in h and "createDynamicsCompressor" in h)
+    check("声部接到总线而非直接接 destination",
+          "playDrum(actx, bus," in h and "playTone(actx, bus," in h)
+
+
 def test_html_embedded_json_parses():
     h = aria_roll.render_html(aria_roll._from_song(demo_song(), "x.json"))
     m = re.search(r"const SONG = (\{.*?\});\n", h, re.S)

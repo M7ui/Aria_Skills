@@ -384,36 +384,136 @@ function voiceFor(program, channel){
 }
 function noiseBuf(ctx){
   if (ctx._nb) return ctx._nb;
-  const b = ctx.createBuffer(1, ctx.sampleRate * 0.2, ctx.sampleRate), d = b.getChannelData(0);
+  const b = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate), d = b.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  return ctx._nb = b;
+  return ctx._nb = b;                      // 1 秒，长衰减（吊镲）靠 loop 续
 }
-function schedule(track, n, when){
+// ── 打击乐：按 GM 鼓号分型合成 ──
+// 曾经的实现是「白噪声 + 120Hz 低通」，底鼓因此比镲片低约 23 dB，几乎听不见 ——
+// 白噪声能量铺满全频，只留 120Hz 等于扔掉 99% 功率，而且噪声没有音高，
+// 发不出底鼓要的"砰"。底鼓必须是**正弦下扫**。
+function drumKind(p){
+  if (p === 35 || p === 36) return 'kick';
+  if (p === 38 || p === 40) return 'snare';
+  if (p === 39) return 'clap';
+  if (p === 37) return 'stick';
+  if ([41,43,45,47,48,50].indexOf(p) >= 0) return 'tom';
+  if (p === 42 || p === 44) return 'chat';
+  if (p === 46) return 'ohat';
+  if ([49,52,53,55,57].indexOf(p) >= 0) return 'crash';
+  if (p === 51 || p === 59) return 'ride';
+  if (p === 56) return 'cowbell';
+  return 'perc';
+}
+function mkEnv(ctx, when, peak, decay, atk){
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, when);
+  g.gain.linearRampToValueAtTime(peak, when + (atk || 0.002));
+  g.gain.exponentialRampToValueAtTime(0.0001, when + decay);
+  return g;
+}
+function mkF(ctx, type, freq, q){
+  const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq;
+  if (q) f.Q.value = q;
+  return f;
+}
+function mkNoise(ctx){
+  const s = ctx.createBufferSource(); s.buffer = noiseBuf(ctx); s.loop = true; return s;
+}
+// 总线：所有声部先过这里再进 destination。
+// 必要性 —— 鼓密集时多个音同时叠加，实测真实 Drop 两小节混音峰值可达 5.0，
+// 远超 ±1.0 会硬削波。用一个 Gain 降底噪 + 一个压缩器当限幅器压住峰值，
+// 这样安静段落（独奏钢琴）不会被压得太小，鼓段也不会糊成方波。
+function masterBus(ctx){
+  if (ctx._mb) return ctx._mb;
+  const g = ctx.createGain(); g.gain.value = 0.62;
+  const c = ctx.createDynamicsCompressor();
+  c.threshold.value = -9; c.knee.value = 2; c.ratio.value = 20;
+  c.attack.value = 0.002; c.release.value = 0.12;
+  g.connect(c).connect(ctx.destination);
+  return ctx._mb = g;
+}
+function playDrum(ctx, dest, pitch, vel, when, sink){
+  const kind = drumKind(pitch), A = vel / 127;
+  const push = x => { if (sink) sink.push(x); };
+  const wire = (src, filt, g, stopAt) => {
+    (filt ? src.connect(filt) : src).connect(g).connect(dest);
+    src.start(when); src.stop(stopAt); push(src);
+  };
+  if (kind === 'kick'){                       // 正弦下扫 + 极短击点
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(150, when);
+    o.frequency.exponentialRampToValueAtTime(48, when + 0.07);
+    const g = mkEnv(ctx, when, 0.5 * A, 0.34, 0.003);
+    o.connect(g).connect(dest); o.start(when); o.stop(when + 0.4); push(o);
+    const n = mkNoise(ctx), f = mkF(ctx, 'highpass', 2200);
+    const g2 = mkEnv(ctx, when, 0.14 * A, 0.02, 0.001);
+    n.connect(f).connect(g2).connect(dest); n.start(when); n.stop(when + 0.03); push(n);
+  } else if (kind === 'snare'){               // 带通噪声 + 一点鼓腔音高
+    const n = mkNoise(ctx), f = mkF(ctx, 'bandpass', 1800, 0.7);
+    const g = mkEnv(ctx, when, 0.34 * A, 0.19, 0.002);
+    n.connect(f).connect(g).connect(dest); n.start(when); n.stop(when + 0.24); push(n);
+    const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = 185;
+    const g2 = mkEnv(ctx, when, 0.2 * A, 0.09, 0.002);
+    o.connect(g2).connect(dest); o.start(when); o.stop(when + 0.13); push(o);
+  } else if (kind === 'clap'){               // 拍手 = 三次极短重触发 + 尾巴
+    [0, 0.009, 0.018].forEach(function(d){   // 9ms 间隔 ≈ 真拍手的拍点散开
+      const n = mkNoise(ctx), f = mkF(ctx, 'bandpass', 1100, 1.1);
+      const g = mkEnv(ctx, when + d, 0.52 * A, 0.035, 0.001);
+      n.connect(f).connect(g).connect(dest); n.start(when + d); n.stop(when + d + 0.06); push(n);
+    });
+    const n2 = mkNoise(ctx), f2 = mkF(ctx, 'bandpass', 1100, 0.9);
+    const g2 = mkEnv(ctx, when + 0.02, 0.32 * A, 0.22, 0.004);
+    n2.connect(f2).connect(g2).connect(dest); n2.start(when + 0.02); n2.stop(when + 0.28); push(n2);
+  } else if (kind === 'chat' || kind === 'ohat' || kind === 'crash' || kind === 'ride'){
+    const dec = kind === 'chat' ? 0.045 : (kind === 'ohat' ? 0.36 : 1.1);
+    const n = mkNoise(ctx), f = mkF(ctx, 'highpass', kind === 'chat' ? 7500 : 5200);
+    const g = mkEnv(ctx, when, (kind === 'crash' ? 0.2 : 0.17) * A, dec, 0.002);
+    n.connect(f).connect(g).connect(dest); n.start(when); n.stop(when + dec + 0.05); push(n);
+  } else if (kind === 'tom'){
+    const base = 90 * Math.pow(2, (pitch - 45) / 12);
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(base * 1.6, when);
+    o.frequency.exponentialRampToValueAtTime(base, when + 0.09);
+    const g = mkEnv(ctx, when, 0.4 * A, 0.26, 0.003);
+    o.connect(g).connect(dest); o.start(when); o.stop(when + 0.34); push(o);
+  } else if (kind === 'stick'){
+    const n = mkNoise(ctx), f = mkF(ctx, 'bandpass', 2600, 1.4);
+    const g = mkEnv(ctx, when, 0.3 * A, 0.05, 0.001);
+    n.connect(f).connect(g).connect(dest); n.start(when); n.stop(when + 0.08); push(n);
+  } else if (kind === 'cowbell'){
+    [540, 800].forEach(function(fr){
+      const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = fr;
+      const g = mkEnv(ctx, when, 0.09 * A, 0.16, 0.002);
+      o.connect(g).connect(dest); o.start(when); o.stop(when + 0.2); push(o);
+    });
+  } else {                                    // tamb / 其它打击乐兜底
+    const n = mkNoise(ctx), f = mkF(ctx, 'bandpass', 3400, 1.0);
+    const g = mkEnv(ctx, when, 0.22 * A, 0.09, 0.002);
+    n.connect(f).connect(g).connect(dest); n.start(when); n.stop(when + 0.13); push(n);
+  }
+}
+function playTone(ctx, dest, track, n, when, sink){
   const v = voiceFor(track.program, track.channel);
   const dur = Math.max(0.05, n.duration * SPB());
   const amp = (n.velocity / 127) * (v.g || 1) * 0.28;
-  if (v.kind === 'drum'){
-    const src = actx.createBufferSource(); src.buffer = noiseBuf(actx);
-    const hp = actx.createBiquadFilter(); hp.type = (n.pitch < 40 ? 'lowpass' : 'highpass');
-    hp.frequency.value = n.pitch < 40 ? 120 : 4000;
-    const g = actx.createGain();
-    g.gain.setValueAtTime(amp * 1.1, when);
-    g.gain.exponentialRampToValueAtTime(0.0001, when + 0.13);
-    src.connect(hp).connect(g).connect(actx.destination); src.start(when); src.stop(when + 0.2);
-    sched.push(src); return;
-  }
-  const o = actx.createOscillator(); o.type = v.type;
+  const o = ctx.createOscillator(); o.type = v.type;
   o.frequency.value = 440 * Math.pow(2, (n.pitch - 69) / 12);
   const s = Math.max(dur, 0.08), rel = v.r;
-  const g = actx.createGain();
+  const g = ctx.createGain();
   g.gain.setValueAtTime(0.0001, when);
   g.gain.linearRampToValueAtTime(amp, when + v.a);
   g.gain.exponentialRampToValueAtTime(Math.max(amp * v.s, 0.0001), when + v.a + v.d);
   g.gain.setValueAtTime(Math.max(amp * v.s, 0.0001), when + s);
   g.gain.exponentialRampToValueAtTime(0.0001, when + s + rel);
-  o.connect(g).connect(actx.destination);
+  o.connect(g).connect(dest);
   o.start(when); o.stop(when + s + rel + 0.05);
-  sched.push(o);
+  if (sink) sink.push(o);
+}
+function schedule(track, n, when){
+  const bus = masterBus(actx);
+  if (track.channel === 9) playDrum(actx, bus, n.pitch, n.velocity, when, sched);
+  else playTone(actx, bus, track, n, when, sched);
 }
 async function play(){
   if (playing) return;
@@ -463,6 +563,26 @@ function tick(){
 // 诊断钩子：便于在控制台确认音频状态（排「为什么没声音」时有用）
 window.__aria = () => ({state: actx && actx.state, sched: sched.length, playing,
                         beat: lastBeat, ppb, manualZoom});
+// 离线试听：用**页面里同一套合成代码**渲染给定的音，返回响度。
+// 排「某个音色听不见」时用它量，比肉耳可靠。
+window.__ariaAudition = async (hits, secs) => {
+  const sr = 44100;
+  const oac = new OfflineAudioContext(1, Math.ceil(sr * (secs || 0.6)), sr);
+  const bus = masterBus(oac);
+  for (const h of hits) {
+    const t = SONG.tracks[h.track] || SONG.tracks[0];
+    if (h.channel === 9 || t.channel === 9)
+      playDrum(oac, bus, h.pitch, h.vel == null ? 112 : h.vel, 0.02, null);
+    else
+      playTone(oac, bus, t,
+               {pitch: h.pitch, duration: h.dur == null ? 0.5 : h.dur,
+                velocity: h.vel == null ? 96 : h.vel}, 0.02, null);
+  }
+  const b = await oac.startRendering(), d = b.getChannelData(0);
+  let peak = 0, sum = 0;
+  for (let i = 0; i < d.length; i++) { peak = Math.max(peak, Math.abs(d[i])); sum += d[i] * d[i]; }
+  return {peak: +peak.toFixed(4), rms: +Math.sqrt(sum / d.length).toFixed(4)};
+};
 document.getElementById('play').onclick = () => playing ? stopAll() : play();
 document.getElementById('stop').onclick = stopAll;
 document.getElementById('loop').onclick = e => e.target.classList.toggle('on');
