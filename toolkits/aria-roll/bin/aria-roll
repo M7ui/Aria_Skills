@@ -1,0 +1,12 @@
+#!/bin/sh
+# Aria aria-roll 垫片（POSIX）：把本目录加入 PATH 后即可直接使用 aria-roll
+# 零依赖。逐个候选解释器**实跑验证**再采用 —— 只做 command -v 不够：
+# Windows 上 python3 常命中 Microsoft Store 的假存根，能解析到但执行即失败。
+for p in python3 python; do
+  if command -v "$p" >/dev/null 2>&1 &&
+     "$p" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' >/dev/null 2>&1; then
+    exec "$p" "$(dirname "$0")/../aria_roll.py" "$@"
+  fi
+done
+echo "aria-roll: 未找到可用的 Python 3.8+（候选：python3 / python）" >&2
+exit 2

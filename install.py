@@ -40,7 +40,7 @@ def main():
         mirror(src, AGENTS / "skills" / skill)
         print(f"[安装] skills/{skill} -> {AGENTS / 'skills' / skill}")
 
-    for tk in ("aria-midi", "aria-decode", "aria-report", "aria-mcp"):
+    for tk in ("aria-midi", "aria-decode", "aria-report", "aria-roll", "aria-mcp"):
         src = ROOT / "toolkits" / tk
         if not src.exists():
             print(f"[跳过] 缺少 {src}")
@@ -51,9 +51,9 @@ def main():
 
     print("\n完成。" if ok else "\n部分内容缺失，请检查包完整性。")
     bins = "、".join(str(AGENTS / "toolkits" / tk / "bin")
-                    for tk in ("aria-midi", "aria-decode", "aria-report", "aria-mcp"))
+                    for tk in ("aria-midi", "aria-decode", "aria-report", "aria-roll", "aria-mcp"))
     print(f"提示: 将 {bins} 加入 PATH 后，"
-          "可直接使用 aria-midi / aria-decode / aria-report / aria-mcp 命令。")
+          "可直接使用 aria-midi / aria-decode / aria-report / aria-roll / aria-mcp 命令。")
     print("注意: aria-report 依赖同级的 aria-decode；aria-mcp 依赖其余三个 toolkit "
           "与同级的 skills/ 知识库，请一并安装、不要单独拷贝。")
     print("")

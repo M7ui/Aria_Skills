@@ -50,6 +50,20 @@ python <本包目录>/toolkits/aria-report/aria_report.py report --input decode/
 aria-report report --input decode/ [--output report.md] [--format md|json]
 ```
 
+### aria-roll — 钢琴卷帘渲染（看得见、听得见）
+
+把 `song.json` **或任意 `.mid`** 渲染成自包含 HTML 卷帘：Canvas 卷帘 + Web Audio 现场合成播放，双击即看、按播放即听，不需要 DAW / 插件 / 音源。也可输出静态 SVG 供可读图的 Agent 使用。
+
+零依赖 Python CLI（仅标准库 + 复用 aria-decode 读 .mid）：`roll`。退出码契约同 aria-midi。
+
+```
+python <本包目录>/toolkits/aria-roll/aria_roll.py roll --input song.json [--format html|svg]
+# 或把 toolkits/aria-roll/bin 加入 PATH 后直接：
+aria-roll roll --input <song.json 或 x.mid> [--output r.html] [--format html|svg]
+```
+
+交付作曲成果时，除 `.mid` 外一并给出 `<歌名>.html` —— 人可以当场试听与查看，不必离开对话去开 DAW。
+
 ### aria-mcp — MCP 服务端（跨 Agent 适配层）
 
 把上面三个工具连同知识库包装成 MCP 服务端，使**任何支持 MCP 的客户端**都能调用 Aria——包括没有 shell、也读不到提示词的 GUI 类 Agent。零依赖：手写 stdio JSON-RPC 2.0，不引官方 SDK，无需 pip 安装。
@@ -75,7 +89,7 @@ python <本包目录>/toolkits/aria-mcp/aria_mcp.py --selftest # 自检
 1. **支持 MCP 的工具**（覆盖面最广，推荐）：把 `aria-mcp` 注册为 stdio MCP 服务端。不需要 shell，也不需要 Agent 读提示词。
 2. **自动发现**（支持 skills 扫描的工具，如 ZCode/Claude Code）：运行本包内 `python install.py`，把 skills 与 toolkits 部署到 `~/.agents/` 即可被扫描加载。`aria-report` 依赖同级的 `aria-decode`；`aria-mcp` 依赖其余三个 toolkit 与同级的 `skills/` 知识库，**一并部署，不要单独拷贝**。
 3. **显式加载**（任何工具）：让 Agent 读取 `skills/aria-compose/SKILL.md`，按其五步工作流执行；SKILL.md 内的 CLI 定位规则已按包内相对路径设计，复制到任何目录都有效。
-4. **仅用 CLI**：不需要提示词时，按 `toolkits/aria-midi/README.md`、`toolkits/aria-decode/README.md`、`toolkits/aria-report/README.md` 或 `toolkits/aria-mcp/README.md` 直接调命令行。
+4. **仅用 CLI**：不需要提示词时，按各 toolkit 的 README 直接调命令行（aria-midi / aria-decode / aria-report / aria-roll / aria-mcp）。
 
 ## 操作细节（Agent 执行时）
 
@@ -165,6 +179,8 @@ aria-midi generate --input 未寄出的信/song.json     # → 未寄出的信/�
 用户说「把 song.mid 解码成 JSON」→ `aria-decode decode --input song.mid --output song.json`，交付含全部事件的 JSON。
 
 用户说「拆解分析这段 MIDI 是什么风格 / 生成旋律动机报告」→ 把 `.mid` 放入 `decode/` 目录 → `aria-report report --input decode/`，交付风格判断 + 调式推测 + 旋律动机报告。
+
+用户说「让我看看/听听这段音乐」→ `aria-roll roll --input <song.json 或 x.mid>`，交付自包含 HTML 卷帘（浏览器里直接播放）。
 
 ## 事实源与更新
 

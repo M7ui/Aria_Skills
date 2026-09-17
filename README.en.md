@@ -12,6 +12,7 @@
 - **JSON in / JSON out with an exit-code contract**: `0 success / 1 data error / 2 usage error`, so results are programmatically checkable
 - **Quality loop**: `validate --strict` enforces zero errors, `analyze` scores 0–10 and returns concrete suggestions — nothing ships below the bar
 - **Cross-agent**: MCP-capable clients (including GUI agents with no shell) can call it directly; skill-scanning tools discover it automatically
+- **See and hear it**: `aria-roll` renders the result into a self-contained HTML piano roll — open to view, press play to listen, no DAW or plugin needed
 - **Fully offline**: scales and chords are computed by the bundled CLI, no network or external API
 - **Optional web research**: when the style is unfamiliar or real-world examples are needed, it runs 2–3 rounds of fuzzy search in Chinese and English against no particular site, and only folds sources into the prompt after they clear a quality bar
 
@@ -143,6 +144,18 @@ python toolkits/aria-report/aria_report.py report --input decode/ --format json 
 
 **Known limitation**: the melody track is chosen as the one with the highest average pitch. If a single track packs bass, chords, and melody together (common in exported files), the extracted "motifs" will be artifacts of cross-voice leaps. Split the voices with `aria-decode` first, or use a multi-track MIDI. The full rule tables are in `toolkits/aria-report/README.md`.
 
+### aria-roll — piano-roll renderer (see it, hear it)
+
+**MIDI is a score, not sound.** Aria's whole pipeline is symbolic, so a human who wants to see or hear the result has to drag it into a DAW, load a plugin and re-import — a pointless round trip whose return leg is broken. `aria-roll` removes it: render `song.json` **or any `.mid`** (including someone else's arrangement) into **one self-contained HTML** — open it for a Canvas piano roll, press play to hear it synthesized live via Web Audio. No DAW, no plugin, no soundfont.
+
+```bash
+python toolkits/aria-roll/aria_roll.py roll --input 未寄出的信/song.json   # → 未寄出的信/未寄出的信.html
+python toolkits/aria-roll/aria_roll.py roll --input "Wait Day.mid"        # inspect someone else's MIDI
+python toolkits/aria-roll/aria_roll.py roll --input song.json --format svg # static roll for vision-capable agents
+```
+
+Voices are synthesized per GM program family, the drum channel is drawn in neutral grey, legend entries are click-to-solo, space toggles playback. Audio is computed in the browser, so the file carries **no audio** (just the score plus a synth) — around 21 KB for a 600-note piece. See `toolkits/aria-roll/README.md`.
+
 ### aria-mcp — MCP server
 
 The three tools above are command-line programs, which implicitly require the agent to **be able to execute processes**. `aria-mcp` wraps them plus the knowledge base into an [MCP](https://modelcontextprotocol.io) server, so any MCP-capable client can call them — **including GUI agents with no shell and no way to read prompts**.
@@ -194,6 +207,7 @@ Per-client config locations and full details: [`toolkits/aria-mcp/README.md`](to
 | `aria-midi compare --input song.json --reference ref.mid` | Style anchoring: your output vs a reference case | 0 / 1 / 2 |
 | `aria-decode decode --input x.mid [--output f.json] [--no-events\|--no-notes]` | Lossless MIDI → JSON | 0 / 1 / 2 |
 | `aria-report report --input <dir or file.mid> [--output r.md] [--format md\|json]` | Batch reverse-engineering report | 0 / 1 / 2 |
+| `aria-roll roll --input <song.json\|x.mid> [--output r.html] [--format html\|svg]` | Render a self-contained playable HTML piano roll or a static SVG | 0 / 1 / 2 |
 | `aria-mcp` | MCP server (stdio), launched by the client | — |
 
 **Conventions**: `--input -` reads from stdin; without `--output` the result goes to stdout as UTF-8; `--version` prints the version. If your Windows console shows mojibake, set `PYTHONIOENCODING=utf-8`.
@@ -223,6 +237,7 @@ Aria_Skills/
     ├── aria-midi/         # Composition spine       v1.3.0  45 cases
     ├── aria-decode/       # Lossless MIDI → JSON    v1.0.1  22 cases, 35 assertions
     ├── aria-report/       # Batch RE report         v1.0.0  38 cases, 73 assertions
+    ├── aria-roll/         # Piano-roll renderer (HTML/SVG)  v1.0.0  29 cases, 45 assertions
     └── aria-mcp/          # MCP server              v1.0.0  40 cases, 87 assertions
 ```
 
@@ -243,6 +258,7 @@ flowchart TB
         Midi[aria-midi<br/>validate · analyze · generate · inspect · scale · compare]
         Decode[aria-decode<br/>lossless MIDI → JSON]
         Report[aria-report<br/>batch reverse-engineering report]
+        Roll[aria-roll<br/>piano-roll HTML/SVG renderer]
         Mcp[aria-mcp<br/>MCP server<br/>11 tools + knowledge resources]
     end
 
@@ -262,6 +278,8 @@ flowchart TB
     Midi -->|generate| MidiFile
     MidiFile --> Decode
     Decode --> MidiJson
+    Midi -->|song.json / .mid| Roll
+    Roll -->|roll / audition HTML| MdReport
     Decode -->|reuses decoder| Report
     Report -->|style / key / motifs| MdReport
     Mcp -.->|wraps all tools| Midi
@@ -290,6 +308,7 @@ flowchart TB
 python toolkits/aria-midi/tests/run_tests.py     # all 45 cases pass
 python toolkits/aria-decode/tests/run_tests.py   # all 22 cases / 35 assertions pass
 python toolkits/aria-report/tests/run_tests.py   # all 38 cases / 73 assertions pass
+python toolkits/aria-roll/tests/run_tests.py     # all 29 cases / 45 assertions pass
 python toolkits/aria-mcp/tests/run_tests.py      # all 40 cases / 87 assertions pass
 ```
 

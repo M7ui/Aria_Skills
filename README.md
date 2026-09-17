@@ -12,6 +12,7 @@
 - **JSON 进出 + 退出码契约**：`0 成功 / 1 数据错误 / 2 用法错误`，结果可编程判断
 - **质量闭环**：`validate --strict` 强制 0 错误，`analyze` 0–10 评分 + 中文改进建议，不达标不放行
 - **跨 Agent**：支持 MCP 的客户端（含无 shell 的 GUI Agent）可直接调用；支持 skills 扫描的工具可自动发现
+- **看得见听得见**：`aria-roll` 把产物渲染成自包含 HTML 钢琴卷帘，双击即看、按播放即听 —— 不必再拉进 DAW 启插件
 - **全流程离线**：音阶/和弦查表用内置 CLI 计算，不依赖网络与外部 API
 - **联网增强**：风格未知或需要真实案例时，用中英文模糊检索 2–3 轮，不指定网站，来源过质量门槛后才落入提示词
 
@@ -130,6 +131,18 @@ python toolkits/aria-decode/aria_decode.py decode --input x.mid --no-events     
 python toolkits/aria-decode/aria_decode.py decode --input x.mid --no-notes       # 只要事件明细
 ```
 
+### aria-roll — 钢琴卷帘渲染（看得见、听得见）
+
+**MIDI 是谱，不是声音。** Aria 整条管线都是符号化的，人要看要听只能拉进 DAW 启插件再导入 —— 一个多余的往返，而且回程断路。`aria-roll` 消掉它：把 `song.json` **或任意 `.mid`**（含别人的编曲）渲染成**一个自包含 HTML**，双击就看到 Canvas 卷帘，按播放就听到 Web Audio 现场合成的声音 —— 不需要 DAW、插件或音源。
+
+```bash
+python toolkits/aria-roll/aria_roll.py roll --input 未寄出的信/song.json   # → 未寄出的信/未寄出的信.html
+python toolkits/aria-roll/aria_roll.py roll --input "Wait Day.mid"        # 别人的 MIDI 也能直接看
+python toolkits/aria-roll/aria_roll.py roll --input song.json --format svg # 静态卷帘，Agent 可读图
+```
+
+卷帘按 GM program 分族合成音色、打击乐通道用中性灰区分、图例可点独奏、空格播放/停止。声音在浏览器里实时算出，所以文件里**不塞音频**（只传谱 + 合成器），600 音符的曲子约 21 KB。详见 `toolkits/aria-roll/README.md`。
+
 ### aria-report — MIDI 批量逆向分析
 
 扫描一个目录，对每个 `.mid` 做**风格识别 + 调式推测 + 旋律动机分析**，输出 Markdown 或 JSON 报告。适合「拿到人类编曲的 MIDI，想看清它是什么风格、动机怎么发展」。
@@ -193,6 +206,7 @@ python toolkits/aria-mcp/aria_mcp.py --selftest   # 自检
 | `aria-midi compare --input song.json --reference ref.mid` | 风格锚定：产出 vs 参考案例参数对比 | 0 / 1 / 2 |
 | `aria-decode decode --input x.mid [--output f.json] [--no-events\|--no-notes]` | 无损解码 MIDI → JSON | 0 / 1 / 2 |
 | `aria-report report --input <目录或文件.mid> [--output r.md] [--format md\|json]` | 批量逆向分析报告 | 0 / 1 / 2 |
+| `aria-roll roll --input <song.json\|x.mid> [--output r.html] [--format html\|svg] [--title T] [--zoom N]` | 渲染自包含 HTML 钢琴卷帘（可播放）或静态 SVG | 0 / 1 / 2 |
 | `aria-mcp` | MCP 服务端（stdio），由客户端拉起 | — |
 
 **通用约定**：`--input -` 从 stdin 读取；不传 `--output` 时写 stdout（UTF-8）；`--version` 查看版本。Windows 控制台若乱码，设 `PYTHONIOENCODING=utf-8`。
@@ -222,6 +236,7 @@ Aria_Skills/
     ├── aria-midi/         # 作曲主线 CLI            v1.3.0  45 用例
     ├── aria-decode/       # MIDI → JSON 无损解码      v1.0.1  22 用例 35 断言
     ├── aria-report/       # 批量逆向分析报告          v1.0.0  38 用例 73 断言
+    ├── aria-roll/         # 钢琴卷帘渲染（HTML/SVG）    v1.0.0  29 用例 45 断言
     └── aria-mcp/          # MCP 服务端                v1.0.0  40 用例 87 断言
 ```
 
@@ -242,6 +257,7 @@ flowchart TB
         Midi[aria-midi<br/>validate · analyze · generate · inspect · scale · compare]
         Decode[aria-decode<br/>MIDI → JSON 无损解码]
         Report[aria-report<br/>批量逆向分析报告]
+        Roll[aria-roll<br/>钢琴卷帘 HTML/SVG 渲染]
         Mcp[aria-mcp<br/>MCP 服务端<br/>11 tools + 知识库 resources]
     end
 
@@ -261,6 +277,8 @@ flowchart TB
     Midi -->|生成| MidiFile
     MidiFile --> Decode
     Decode --> MidiJson
+    Midi -->|song.json / .mid| Roll
+    Roll -->|卷帘 / 试听 HTML| MdReport
     Decode -->|复用解码器| Report
     Report -->|风格/调式/动机| MdReport
     Mcp -.->|包装全部工具| Midi
@@ -289,6 +307,7 @@ flowchart TB
 python toolkits/aria-midi/tests/run_tests.py     # 45 个用例全绿
 python toolkits/aria-decode/tests/run_tests.py   # 22 个用例 35 项断言全绿
 python toolkits/aria-report/tests/run_tests.py   # 38 个用例 73 项断言全绿
+python toolkits/aria-roll/tests/run_tests.py     # 29 个用例 45 项断言全绿
 python toolkits/aria-mcp/tests/run_tests.py      # 40 个用例 87 项断言全绿
 ```
 
