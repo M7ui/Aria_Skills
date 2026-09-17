@@ -542,6 +542,29 @@ INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
 
 
+def _too_large_text(result, text):
+    """结果超过上限时，返回**合法 JSON** 的说明信封。
+
+    绝不能直接截断序列化后的 JSON —— 半截 JSON 客户端无法解析，表现成
+    「工具返回了垃圾」而不是「结果太大」。信封里给出实际大小、可读预览，
+    以及怎么缩小结果的提示。
+    """
+    hint = ("结果过大，已不返回完整内容。缩小方式："
+            "decode_midi 用 include_events:false（或 include_notes:false）取所需的一半；"
+            "report_midi 减少 files 数量；inspect_midi 换用 decode_midi 的紧凑模式。")
+    if isinstance(result, list):
+        hint = "结果是数组，请减少请求的文件数量。 " + hint
+    return json.dumps({
+        "ok": False,
+        "truncated": True,
+        "reason": "result_too_large",
+        "actual_chars": len(text),
+        "limit_chars": MAX_TEXT_CHARS,
+        "hint": hint,
+        "preview": text[:2000],
+    }, ensure_ascii=False, indent=2)
+
+
 def _log(*a):
     """诊断信息一律走 stderr —— stdout 只能有 JSON-RPC 消息。"""
     print("[aria-mcp]", *a, file=sys.stderr)
@@ -617,7 +640,7 @@ def handle(msg):
                 return _ok(mid, _text_result(f"{type(e).__name__}: {e}", is_error=True))
             text = json.dumps(result, ensure_ascii=False, indent=2)
             if len(text) > MAX_TEXT_CHARS:
-                text = text[:MAX_TEXT_CHARS] + "\n…（输出过长已截断）"
+                text = _too_large_text(result, text)
             return _ok(mid, _text_result(text))
 
         if method == "resources/list":

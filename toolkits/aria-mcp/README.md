@@ -116,7 +116,7 @@ MCP 的 stdio 传输本质是「**按行分隔的 JSON-RPC 2.0**」，因此这�
 python tests/run_tests.py
 ```
 
-39 个用例 82 项断言，分协议层与工具层：
+40 个用例 87 项断言，分协议层与工具层：
 
 - **协议层**：`initialize` 握手与版本协商、通知不响应、`ping`、`tools/list` 与 inputSchema 自洽性（required ⊆ properties、array 带 items）、未知方法 `-32601`、缺 method `-32600`、非法 JSON `-32700`、`serve()` 分帧（空行忽略/通知不产出响应/id 顺序）、stdout 每行都是合法 JSON-RPC、`handle()` 对畸形输入永不抛异常
 - **资源层**：列表字段、读取正文、未知 URI 被拒、**路径穿越被拒**（`../` 与 `..%2f` 等四种变体）
@@ -128,7 +128,7 @@ python tests/run_tests.py
 
 - **要求 Agent 支持 MCP。** 不支持 MCP 且无 shell 的 Agent 仍只能用知识层（可读 resources 对应的 Markdown 文件）。
 - **单次调用无状态。** 服务端不在调用之间保留会话状态，每次都要把 song.json 完整传进来。作品较大时 payload 会偏大。
-- **`decode_midi` 输出可能很大。** 一个 400 音符文件完整解码约 125 KB JSON。建议默认用 `include_events: false`，只在需要查 CC/弯音/Tempo 变化时开完整模式。单条返回文本超过 40 万字符会被截断。
+- **`decode_midi` 输出可能很大。** 一个 658 音符文件的**完整**解码约 50 万字符，会超过单条返回上限（40 万字符）。建议默认用 `include_events: false`（或 `include_notes: false`）只取所需的一半，仅在需要查 CC/弯音/Tempo 变化时才开完整模式。超限时返回的是一个**合法 JSON 信封**（`truncated: true` + 实际大小 + 前 2000 字符预览 + 缩小提示），不是截断的半截 JSON —— 客户端始终能 `parse`。
 - **`report_midi` 的动机分析对单轨多声部文件无意义。** 它按「平均音高最高的轨」选旋律轨，若一个轨里混装了低音+和弦+旋律，检出的「动机」会是跨声部大跳的假象。详见 `toolkits/aria-report/README.md` 的已知限制。
 - **协议版本演进。** 已声明支持 `2024-11-05` / `2025-03-26` / `2025-06-18`；客户端请求未知版本时回落到 `2024-11-05`。MCP 规范仍在变动，后续新版本可能需要跟进。
 - **超时上限 120 秒/次**，批量 `report_midi` 处理大量文件时可能触及。

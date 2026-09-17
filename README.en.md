@@ -223,7 +223,7 @@ Aria_Skills/
     ├── aria-midi/         # Composition spine       v1.3.0  45 cases
     ├── aria-decode/       # Lossless MIDI → JSON    v1.0.1  22 cases, 35 assertions
     ├── aria-report/       # Batch RE report         v1.0.0  38 cases, 73 assertions
-    └── aria-mcp/          # MCP server              v1.0.0  39 cases, 82 assertions
+    └── aria-mcp/          # MCP server              v1.0.0  40 cases, 87 assertions
 ```
 
 Every toolkit has the same shape: the main program + `README.md` (full docs) + `tests/run_tests.py` + `bin/` (PATH shims — `.cmd` on Windows, an extensionless POSIX script elsewhere).
@@ -290,7 +290,7 @@ flowchart TB
 python toolkits/aria-midi/tests/run_tests.py     # all 45 cases pass
 python toolkits/aria-decode/tests/run_tests.py   # all 22 cases / 35 assertions pass
 python toolkits/aria-report/tests/run_tests.py   # all 38 cases / 73 assertions pass
-python toolkits/aria-mcp/tests/run_tests.py      # all 39 cases / 82 assertions pass
+python toolkits/aria-mcp/tests/run_tests.py      # all 40 cases / 87 assertions pass
 ```
 
 ## License

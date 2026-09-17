@@ -222,7 +222,7 @@ Aria_Skills/
     ├── aria-midi/         # 作曲主线 CLI            v1.3.0  45 用例
     ├── aria-decode/       # MIDI → JSON 无损解码      v1.0.1  22 用例 35 断言
     ├── aria-report/       # 批量逆向分析报告          v1.0.0  38 用例 73 断言
-    └── aria-mcp/          # MCP 服务端                v1.0.0  39 用例 82 断言
+    └── aria-mcp/          # MCP 服务端                v1.0.0  40 用例 87 断言
 ```
 
 每个 toolkit 目录结构一致：主程序 + `README.md`（完整文档）+ `tests/run_tests.py` + `bin/`（PATH 垫片，Windows 为 `.cmd`、POSIX 为同名无扩展名脚本）。
@@ -289,7 +289,7 @@ flowchart TB
 python toolkits/aria-midi/tests/run_tests.py     # 45 个用例全绿
 python toolkits/aria-decode/tests/run_tests.py   # 22 个用例 35 项断言全绿
 python toolkits/aria-report/tests/run_tests.py   # 38 个用例 73 项断言全绿
-python toolkits/aria-mcp/tests/run_tests.py      # 39 个用例 82 项断言全绿
+python toolkits/aria-mcp/tests/run_tests.py      # 40 个用例 87 项断言全绿
 ```
 
 ## 开源许可

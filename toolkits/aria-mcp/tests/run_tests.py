@@ -481,6 +481,38 @@ def test_report_midi():
     check("report_midi 缺 midi_base64 -> isError", is_error(r), tool_text(r))
 
 
+def test_oversize_result_is_valid_json():
+    """超出上限时返回的必须是**合法 JSON**，不能是截断的半截 JSON。
+
+    曾经的实现直接切片，客户端 parse 会炸，表现成「工具返回垃圾」而非
+    「结果太大」。
+    """
+    big = [{"i": i, "pad": "x" * 200} for i in range(5000)]     # 约 1M 字符
+    text = json.dumps(big, ensure_ascii=False)
+    env = json.loads(aria_mcp._too_large_text(big, text))
+    check("超大结果返回合法 JSON 信封", isinstance(env, dict), type(env))
+    check("信封标记 truncated 与实际大小",
+          env["truncated"] is True and env["actual_chars"] == len(text),
+          str({k: env[k] for k in ("truncated", "actual_chars", "limit_chars")}))
+    check("信封带可读预览与缩小提示",
+          len(env["preview"]) > 0 and "include_events" in env["hint"], env["hint"][:60])
+    # 端到端：把上限压低，确认 tools/call 返回的文本仍可被 json.loads 解析。
+    # 注意先生成 MIDI 再压低上限 —— 否则 generate_midi 自身也会被截断。
+    b64 = gen_midi_b64()
+    original = aria_mcp.MAX_TEXT_CHARS
+    aria_mcp.MAX_TEXT_CHARS = 200
+    try:
+        r = call_tool("decode_midi", {"midi_base64": b64})
+        parsed = json.loads(tool_text(r))          # 不抛异常即合格
+        check("压低上限后 tools/call 仍返回合法 JSON",
+              isinstance(parsed, dict) and parsed.get("truncated") is True,
+              str(list(parsed))[:80])
+        check("截断信封给出缩小提示",
+              "include_events" in parsed.get("hint", ""), parsed.get("hint", "")[:60])
+    finally:
+        aria_mcp.MAX_TEXT_CHARS = original
+
+
 def test_report_midi_blocks_traversal():
     """文件名里的目录穿越应被 basename 抹平，不写到临时目录之外。"""
     b64 = gen_midi_b64()
