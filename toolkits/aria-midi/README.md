@@ -165,9 +165,38 @@ aria-midi analyze --input song.json --style arpeggio      # 豁免跳进约束�
 | 高潮位置 | ≤2 | ≥16 拍时，全曲最高音出现在 35%–90% 区间拿满；<30% 报「高潮太早」 |
 | 终止稳定性 | ≤2 | 仅传 `--key-root` 时启用：末乐句落主音拿满；倒数乐句不落属音/上主音给半终止建议 |
 
-输出位置：顶层 `structure_score`；`details.structure` 含 `phrase_count` / `phrase_lengths` /
-`phrase_endings_pc` / `contour_reuse_pairs` / `climax_position` / `final_on_tonic`。
-结构建议直接进 `suggestions`。使用建议：`analyze --chords chords.json --key-root C4` 一起传，结构分 < 6 时先修乐句计划再改音符。
+  输出位置：顶层 `structure_score`；`details.structure` 含 `phrase_count` / `phrase_lengths` /
+  `phrase_endings_pc` / `contour_reuse_pairs` / `climax_position` / `final_on_tonic` / `bar_structure`。
+  结构建议直接进 `suggestions`。使用建议：`analyze --chords chords.json --key-root C4` 一起传，结构分 < 6 时先修乐句计划再改音符。
+
+### 小节级结构（`details.structure.bar_structure`，v1.3.0 新增）
+
+**为什么需要它**：上面那套乐句级检测靠「音隔 ≥0.5 拍」切分，遇到**循环式作品**会失明 ——
+旋律几乎无休止时（DAW 导出的氛围/lo-fi 很常见），整曲被合并成一两个巨型乐句，小节内的同头结构
+完全落不进切分。实测一首**开头细胞重复率 88%** 的人写作品，被乐句级分析判成「缺少同头复用」。
+
+本字段改用**固定窗口（小节）取样**，与有没有休止无关，对循环式与通谱式作品都成立：
+
+| 字段 | 含义 |
+|------|------|
+| `bars_with_melody` / `first_bar` | 参与统计的小节数（含 ≥3 音的小节）与起始小节 |
+| `rhythm_template_count` / `rhythm_reuse` / `top_rhythm_coverage` | 每小节节奏骨架（小节内起点偏移序列）的去重数 / 重复率 / 最高频占比 |
+| `head_cell_count` / `head_reuse` / `top_head_coverage` | 每小节前 3 音的音高序列，同上 |
+| `structure_kind` | 两条轴的相对强度判定（差值 0.15 为界）：`音高主导（同头异尾）` / `节奏主导（固定节奏变奏）` / `双轴并重（严格循环）` |
+
+它同时用于**给乐句级结论做交叉校验**：乐句级因无休止而抓不到同头时，若小节级重复度
+≥50%，则按同头计分并改报识别到的结构类型，不再误报「缺少同头复用」。这是**严格增量**改动
+—— 只补回被误判扣掉的分，不改变任何本来就得分的作品。
+
+**四条轴的四种写法**（实测样本）：音高主导 = 头细胞重复 88%/节奏 67%（同头异尾）；节奏主导 =
+38%/83%（固定节奏变奏）；双轴并重 = 严格循环；两者皆低 = 通谱式。
+
+### 单轨多声部守卫
+
+低音/和弦/旋律挤在同一个音轨时（很多导出/合并文件如此），相邻音符会在**跨声部处**产生十几
+半音的虚假大跳，级进占比随之崩到个位数 —— 此时报「旋律断裂」是答错了题。`analyze` 用
+**平均音程跨度**判定：`平均 ≥7 半音 且 级进 <25%` 则改报「该先拆声部」，并说明本轨各项旋律
+指标都不可信。判据的区分点在于：混声部的均值通常 >7 半音，而爵士/琶音式跳进的均值一般在 3–5。
 
 ## compare（风格锚定）
 

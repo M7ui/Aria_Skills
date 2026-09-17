@@ -275,6 +275,86 @@ class TestAnalyze(unittest.TestCase):
         self.assertIn("乐句", " ".join(d["suggestions"]))
 
 
+class TestBarStructure(unittest.TestCase):
+    """小节级结构指标 —— 固定窗口取样，不依赖休止切分。
+
+    动机：乐句级切分靠「音隔 ≥0.5 拍」，循环式作品（旋律几乎无休止）会被合并成
+    一两个巨型乐句，小节内的同头结构落不进切分，于是高重复度的作品被误判为
+    「缺少同头复用」。这组用例锁住修复。
+    """
+
+    @staticmethod
+    def _loop_notes(bars=8):
+        """连续八分音符 + 每小节固定的开头三音（模拟循环式写法，全程无休止）。"""
+        heads = [[72, 74, 76], [69, 72, 74]]
+        notes = []
+        for b in range(bars):
+            seq = (heads[b % 2] + [79, 76, 74, 72, 71])[:8]
+            for i, p in enumerate(seq):
+                notes.append({"pitch": p, "start_beat": b * 4 + i * 0.5,
+                              "duration": 0.5, "velocity": 86 + (i % 3) * 4})
+        return {"bpm": 120, "tracks": [{"name": "旋律", "channel": 0, "program": 0,
+                                        "notes": notes}]}
+
+    def test_detects_head_cell_reuse(self):
+        r = run_cli("analyze", "--input", "-", stdin=json.dumps(self._loop_notes()))
+        self.assertEqual(r.returncode, 0, r.stdout)
+        bs = json.loads(r.stdout)["details"]["structure"]["bar_structure"]
+        self.assertIsNotNone(bs, "小节级结构应被计算")
+        self.assertEqual(bs["bars_with_melody"], 8)
+        self.assertEqual(bs["head_cell_count"], 2, bs)
+        self.assertEqual(bs["head_reuse"], 0.75, bs)
+
+    def test_no_false_missing_head_suggestion(self):
+        """全程无休止 → 乐句级 contour_reuse=0，但小节级重复成立，不应误报缺少同头。"""
+        r = run_cli("analyze", "--input", "-", stdin=json.dumps(self._loop_notes()))
+        d = json.loads(r.stdout)
+        self.assertEqual(d["details"]["structure"]["contour_reuse_pairs"], 0,
+                         "本 fixture 应切不出多个乐句（用于验证兜底分支）")
+        joined = " ".join(d["suggestions"])
+        self.assertNotIn("缺少「同头」", joined)
+        self.assertIn("小节级结构明确", joined)     # 改为报出识别到的结构类型
+
+    def test_bar_structure_absent_for_short_melody(self):
+        """少于 4 个可用小节时不产出该字段（避免用噪声下结论）。"""
+        notes = [{"pitch": 60 + i, "start_beat": i * 0.5, "duration": 0.5, "velocity": 90}
+                 for i in range(6)]                      # 不足 4 小节
+        r = run_cli("analyze", "--input", "-",
+                    stdin=json.dumps({"bpm": 120, "tracks": [
+                        {"name": "m", "channel": 0, "program": 0, "notes": notes}]}))
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIsNone(json.loads(r.stdout)["details"]["structure"]["bar_structure"])
+
+
+class TestMultiVoiceGuard(unittest.TestCase):
+    """单轨多声部守卫：低音+和弦+旋律挤在同一轨时，应提示拆声部而不是判「旋律断裂」。"""
+
+    def test_mixed_voice_track_flagged(self):
+        notes = []
+        for b in range(8):                                  # 每小节：低音 + 中声部 + 旋律
+            notes.append({"pitch": 41, "start_beat": b * 4, "duration": 4, "velocity": 90})
+            notes.append({"pitch": 53 + b % 3, "start_beat": b * 4 + 0.5, "duration": 3, "velocity": 88})
+            notes.append({"pitch": 60 + b % 4, "start_beat": b * 4 + 1.0, "duration": 2.5, "velocity": 86})
+            notes.append({"pitch": 76 - b % 5, "start_beat": b * 4 + 2.0, "duration": 0.5, "velocity": 92})
+        r = run_cli("analyze", "--input", "-",
+                    stdin=json.dumps({"bpm": 120, "tracks": [
+                        {"name": "MIDI Out", "channel": 0, "program": 0, "notes": notes}]}))
+        self.assertEqual(r.returncode, 0, r.stdout)
+        joined = " ".join(json.loads(r.stdout)["suggestions"])
+        self.assertIn("同一个音轨", joined, joined)
+        self.assertNotIn("旋律断裂", joined, "已识别为拆声部问题，不应再报旋律断裂")
+
+    def test_normal_melody_not_flagged(self):
+        """三度跳进为主的正常旋律（平均音程 <7 半音）不应被误判为多声部。"""
+        notes = [{"pitch": p, "start_beat": i * 0.5, "duration": 0.5, "velocity": 88}
+                 for i, p in enumerate([72, 76, 79, 76, 72, 76, 74, 71, 74, 79, 76, 72])]
+        r = run_cli("analyze", "--input", "-",
+                    stdin=json.dumps({"bpm": 120, "tracks": [
+                        {"name": "Lead", "channel": 0, "program": 0, "notes": notes}]}))
+        joined = " ".join(json.loads(r.stdout)["suggestions"])
+        self.assertNotIn("同一个音轨", joined, joined)
+
+
 class TestCompare(unittest.TestCase):
     def _tmp_song(self, td, notes, bpm=120, name="s.json"):
         p = Path(td) / name

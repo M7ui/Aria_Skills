@@ -233,7 +233,7 @@ Aria_Skills/
 │   │   └── references/    #   composition-rules / pattern-library / melody-chord-writing / midi-schema / examples
 │   └── aria-music-theory/ # 乐理问答：音阶/和弦/进行 + 风格知识库（pop/EDM/jazz/tropical/techniques/g-house）
 └── toolkits/
-    ├── aria-midi/         # 作曲主线 CLI            v1.3.0  45 用例
+    ├── aria-midi/         # 作曲主线 CLI            v1.3.0  50 用例
     ├── aria-decode/       # MIDI → JSON 无损解码      v1.0.1  22 用例 35 断言
     ├── aria-report/       # 批量逆向分析报告          v1.0.0  38 用例 73 断言
     ├── aria-roll/         # 钢琴卷帘渲染（HTML/SVG）    v1.0.0  31 用例 50 断言
@@ -304,7 +304,7 @@ flowchart TB
 ## 自测
 
 ```bash
-python toolkits/aria-midi/tests/run_tests.py     # 45 个用例全绿
+python toolkits/aria-midi/tests/run_tests.py     # 50 个用例全绿
 python toolkits/aria-decode/tests/run_tests.py   # 22 个用例 35 项断言全绿
 python toolkits/aria-report/tests/run_tests.py   # 38 个用例 73 项断言全绿
 python toolkits/aria-roll/tests/run_tests.py     # 31 个用例 50 项断言全绿

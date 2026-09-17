@@ -25,7 +25,7 @@ import os
 import re
 import struct
 import sys
-from collections import deque
+from collections import Counter, deque
 
 TPQN = 480  # ticks per quarter note（与网页应用一致）
 
@@ -773,6 +773,59 @@ def _phrase_contour(phrase):
                  for i in range(len(ps) - 1))
 
 
+def _analyze_bar_structure(srt, beats_per_bar=4):
+    """小节级结构分析 —— 不依赖休止切分，对循环式与通谱式作品都成立。
+
+    存在的理由：乐句级分析靠「音隔 ≥0.5 拍」切分，遇到**循环式作品**（旋律几乎
+    无休止，如 DAW 导出的氛围/lo-fi）会把整曲合并成一两个巨型乐句，小节内的同头
+    结构完全落不进切分里 —— 实测一首头细胞重复率 88% 的人写作品，被乐句级分析
+    判成「缺少同头复用」。本函数改用固定窗口（小节）取样：
+
+      rhythm_template  每小节的节奏骨架（各音起点在小节内的偏移序列）
+      head_cell        每小节前 3 个音的音高序列
+
+    并据两条轴的相对强度判定结构类型。
+    """
+    bars = {}
+    for n in srt:
+        sb = float(n.get("start_beat", 0))
+        bars.setdefault(int(sb // beats_per_bar), []).append(n)
+    bars = {b: sorted(v, key=lambda x: float(x.get("start_beat", 0)))
+            for b, v in bars.items() if len(v) >= 3}       # 音太少的残句不参与
+    n = len(bars)
+    if n < 4:
+        return None
+    base = min(bars)
+    rhythm = {b: tuple(round(float(x["start_beat"]) - b * beats_per_bar, 2) for x in v)
+              for b, v in bars.items()}
+    heads = {b: tuple(int(x.get("pitch", 60)) for x in v[:3]) for b, v in bars.items()}
+    u_rh, u_hd = len(set(rhythm.values())), len(set(heads.values()))
+    top_rh = max(Counter(rhythm.values()).values())
+    top_hd = max(Counter(heads.values()).values())
+    head_reuse = 1 - u_hd / n
+    rhythm_reuse = 1 - u_rh / n
+    # 哪个轴在主导：差值 0.15 以内算两轴并重
+    d = head_reuse - rhythm_reuse
+    if d >= 0.15:
+        kind = "音高主导（同头异尾）"
+    elif d <= -0.15:
+        kind = "节奏主导（固定节奏变奏）"
+    else:
+        kind = "双轴并重（严格循环）"
+    return {
+        "bars_with_melody": n,
+        "first_bar": base + 1,
+        "rhythm_template_count": u_rh,
+        "rhythm_reuse": round(rhythm_reuse, 3),
+        "top_rhythm_coverage": round(top_rh / n, 3),
+        "head_cell_count": u_hd,
+        "head_reuse": round(head_reuse, 3),
+        "top_head_coverage": round(top_hd / n, 3),
+        "structure_kind": kind,
+        "note": "小节级指标，与休止无关；对循环式与通谱式作品都成立",
+    }
+
+
 def _analyze_structure(srt, key_pc=None):
     """模块化乐句结构分析（动机→乐句→乐段的连贯性维度）。
 
@@ -813,18 +866,33 @@ def _analyze_structure(srt, key_pc=None):
         if len(endings) >= 2:
             penult_on_dominant = endings[-2] in {(key_pc + 7) % 12, (key_pc + 2) % 12}
 
+    # 小节级结构（与休止无关）—— 用来给乐句级结论做交叉校验：
+    # 乐句级抓不到同头时，若小节级重复度很高，说明只是切分没对上，不是真缺结构
+    bar_info = _analyze_bar_structure(srt)
+    bar_structured = bool(bar_info and max(bar_info["head_reuse"],
+                                           bar_info["rhythm_reuse"]) >= 0.5)
+
     suggestions = []
     points, max_points = 0.0, 8.0
     if len(phrases) >= 2:
         points += 3.0 if len(phrases) <= 8 else 2.0
     else:
         points += 1.0
-        if len(srt) >= 8:
+        if len(srt) >= 8 and not bar_structured:
             suggestions.append(
                 "整段旋律只切出 1 个乐句（全程无 ≥0.5 拍休止或 ≥2 拍长音），"
                 "听感会一口气喘不上来；按 period 4+4 / sentence 2+2+4 / 起承转合 四句体切分乐句")
     if contour_reuse > 0:
         points += 3.0
+    elif bar_structured:
+        # 乐句级因无休止而切分失效，但小节级重复成立 —— 结构确实存在，按同头计分。
+        # 这是**严格增量**：只补回被误判扣掉的分，不改变任何本来就得分的作品。
+        points += 3.0
+        suggestions.append(
+            f"乐句级未检出同头（旋律无休止，按音隔切分失效），但小节级结构明确："
+            f"{bar_info['structure_kind']} —— 开头细胞重复率 {bar_info['head_reuse']*100:.0f}%、"
+            f"节奏型重复率 {bar_info['rhythm_reuse']*100:.0f}%（{bar_info['bars_with_melody']} 个有旋律小节）。"
+            "这是循环式写法，不是缺陷；若想增强旋律辨识度，可在保持骨架的前提下多换尾句")
     elif len(phrases) >= 3:
         suggestions.append(
             f"{len(phrases)} 个乐句的开头轮廓两两不同，缺少「同头」复用；"
@@ -862,6 +930,7 @@ def _analyze_structure(srt, key_pc=None):
         "contour_reuse_pairs": contour_reuse,
         "climax_position": f"{climax_pos * 100:.0f}%",
         "final_on_tonic": final_on_tonic,
+        "bar_structure": bar_info,
     }
     return info, suggestions, structure_score
 
@@ -956,7 +1025,20 @@ def cmd_analyze(args):
     elif strong_total == 0 and chord_tone_total > 0 and rate < 0.6:
         suggestions.append(f"音符与和弦音匹配率仅 {rate * 100:.0f}%，建议检查和弦进行定义；若是挂留/倚音/蓝调音的有意表达，可保留")
     if total_moves >= 4 and not style_exempt:
-        if step_ratio < 0.4:
+        # 先排除「单轨多声部」这个输入侧问题：低音与旋律挤在同一轨时，相邻音符会
+        # 在跨越声部处产生十几半音的大跳，级进占比随之崩到个位数 —— 此时报「旋律
+        # 断裂」是答错了题，真正该做的是先拆声部。判据用**平均音程跨度**：混声部的
+        # 均值通常 >7 半音，而爵士/琶音式跳进的均值一般在 3–5。
+        mean_iv = (sum(abs(pitches[i] - pitches[i - 1]) for i in range(1, len(pitches)))
+                   / total_moves) if total_moves else 0.0
+        multi_voice = mean_iv >= 7.0 and step_ratio < 0.25
+        if multi_voice:
+            suggestions.append(
+                f"平均音程跨度达 {mean_iv:.1f} 半音、级进仅 {step_ratio * 100:.0f}% —— "
+                "这个特征通常不是旋律本身的问题，而是**低音/和弦/旋律被压在同一个音轨里**，"
+                "跨声部的相邻音造成了虚假大跳。请先按音区拆声部（或改用多轨 MIDI）再评分，"
+                "否则本轨的各项旋律指标都不可信")
+        elif step_ratio < 0.4:
             suggestions.append(f"级进占比仅 {step_ratio * 100:.0f}%（跳进 {leap_count} 次 vs 级进 {step_count} 次），旋律断裂、机器味明显；除非是爵士/琶音/蓝调风格，否则应把跳进控制在级进的 1/3 以内")
         elif step_ratio < 0.6:
             suggestions.append(f"级进占比偏低（{step_ratio * 100:.0f}%），建议多数音程用大二度以内的级进，让旋律更可唱")
