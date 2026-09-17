@@ -234,7 +234,7 @@ Aria_Skills/
 │   │   └── references/    #   composition-rules / pattern-library / melody-chord-writing / midi-schema / examples
 │   └── aria-music-theory/ # Music theory Q&A: scales/chords/progressions + style references
 └── toolkits/
-    ├── aria-midi/         # Composition spine       v1.3.0  50 cases
+    ├── aria-midi/         # Composition spine       v1.3.0  51 cases
     ├── aria-decode/       # Lossless MIDI → JSON    v1.0.1  22 cases, 35 assertions
     ├── aria-report/       # Batch RE report         v1.0.0  38 cases, 73 assertions
     ├── aria-roll/         # Piano-roll renderer (HTML/SVG)  v1.0.0  31 cases, 50 assertions
@@ -305,7 +305,7 @@ flowchart TB
 ## Self-Test
 
 ```bash
-python toolkits/aria-midi/tests/run_tests.py     # all 50 cases pass
+python toolkits/aria-midi/tests/run_tests.py     # all 51 cases pass
 python toolkits/aria-decode/tests/run_tests.py   # all 22 cases / 35 assertions pass
 python toolkits/aria-report/tests/run_tests.py   # all 38 cases / 73 assertions pass
 python toolkits/aria-roll/tests/run_tests.py     # all 31 cases / 50 assertions pass

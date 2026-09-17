@@ -804,14 +804,19 @@ def _analyze_bar_structure(srt, beats_per_bar=4):
     top_hd = max(Counter(heads.values()).values())
     head_reuse = 1 - u_hd / n
     rhythm_reuse = 1 - u_rh / n
-    # 哪个轴在主导：差值 0.15 以内算两轴并重
-    d = head_reuse - rhythm_reuse
-    if d >= 0.15:
-        kind = "音高主导（同头异尾）"
-    elif d <= -0.15:
-        kind = "节奏主导（固定节奏变奏）"
+    # 先看绝对量再看差值 —— 只用差值会把「两轴都为零」（通谱式、无小节级重复）
+    # 判成「双轴并重（严格循环）」，含义正好相反。
+    strong = max(head_reuse, rhythm_reuse)
+    if strong < 0.3:
+        kind = "通谱式（无小节级重复）"
     else:
-        kind = "双轴并重（严格循环）"
+        d = head_reuse - rhythm_reuse
+        if d >= 0.15:
+            kind = "音高主导（同头异尾）"
+        elif d <= -0.15:
+            kind = "节奏主导（固定节奏变奏）"
+        else:
+            kind = "双轴并重（严格循环）"
     return {
         "bars_with_melody": n,
         "first_bar": base + 1,

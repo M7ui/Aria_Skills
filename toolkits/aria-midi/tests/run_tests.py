@@ -315,6 +315,24 @@ class TestBarStructure(unittest.TestCase):
         self.assertNotIn("缺少「同头」", joined)
         self.assertIn("小节级结构明确", joined)     # 改为报出识别到的结构类型
 
+    def test_through_composed_is_not_mislabelled_as_loop(self):
+        """两轴重复都接近 0 时应判「通谱式」，而不是「双轴并重（严格循环）」——
+        零重复与严格循环含义正相反，只用两轴差值会搞反。"""
+        notes = []
+        for b in range(8):                      # 每小节音高与节奏都唯一 → 两轴零重复
+            head = [60 + b * 3, 62 + b * 3, 64 + b * 3]
+            offs = [0.0, 0.5, 1.0 + b * 0.25, 2.0, 3.0]
+            for p, o in zip(head + [74, 76], offs):
+                notes.append({"pitch": p, "start_beat": b * 4 + o,
+                              "duration": 0.5, "velocity": 88})
+        r = run_cli("analyze", "--input", "-",
+                    stdin=json.dumps({"bpm": 120, "tracks": [
+                        {"name": "m", "channel": 0, "program": 0, "notes": notes}]}))
+        self.assertEqual(r.returncode, 0, r.stdout)
+        bs = json.loads(r.stdout)["details"]["structure"]["bar_structure"]
+        self.assertLess(max(bs["head_reuse"], bs["rhythm_reuse"]), 0.3, bs)
+        self.assertEqual(bs["structure_kind"], "通谱式（无小节级重复）", bs)
+
     def test_bar_structure_absent_for_short_melody(self):
         """少于 4 个可用小节时不产出该字段（避免用噪声下结论）。"""
         notes = [{"pitch": 60 + i, "start_beat": i * 0.5, "duration": 0.5, "velocity": 90}
