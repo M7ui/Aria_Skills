@@ -18,6 +18,12 @@
 零依赖 Python CLI（仅标准库，Python 3.8+）：`generate / validate / inspect / scale / analyze`。
 JSON 进出，退出码 0=成功 / 1=数据错误 / 2=用法错误。
 
+`analyze` 除总分/技术分/音乐性分/结构分外，另在 `details` 给出**情感与线条**指标
+（2026-09 新增）：`sounding_ratio`（发声占比）、`scalar_run_mean`（音阶跑动均长）、
+`continuity_points`（线条连续性）、`leaps_per_min`、`leap_resolve_rate`、
+`asc_mean`/`desc_mean`，以及 `details.structure.phrase_ending_alternation`。
+放行前除看分数，还应看：发声占比 ≥0.8、音阶跑动均长 ≤1.5、线条连续性 ≥2.5。
+
 ```
 python <本包目录>/toolkits/aria-midi/aria_midi.py <子命令> [参数]
 # 或把 toolkits/aria-midi/bin 加入 PATH 后直接：
@@ -121,7 +127,7 @@ python toolkits/aria-midi/aria_midi.py scale --root C4 --type major --chord dom7
 # 3. 严格校验，必须 ok=true 且 errors=[]
 python toolkits/aria-midi/aria_midi.py validate --input song.json --strict
 
-# 4. 评分，score >= 7 且 passed=true 才放行；structure_score >= 6 检查乐句连贯性；
+# 4. 诊断：analyze 不参与放行（总分在音符层面无梯度）；--baseline 看人写分位数落点；
 #    不达标按 suggestions 修改后重跑（传 --key-root 才会检查终止稳定性）
 python toolkits/aria-midi/aria_midi.py analyze --input song.json --chords chords.json --key-root C4
 

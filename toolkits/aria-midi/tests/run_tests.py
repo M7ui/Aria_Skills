@@ -275,6 +275,114 @@ class TestAnalyze(unittest.TestCase):
         self.assertIn("乐句", " ".join(d["suggestions"]))
 
 
+class TestContinuityMetrics(unittest.TestCase):
+    """线条类指标（情感/结构的主要载体，2026-09 新增）。"""
+
+    def _analyze(self, notes, bpm=120):
+        r = run_cli("analyze", "--input", "-",
+                    stdin=json.dumps({"bpm": bpm, "notes": notes}))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_new_fields_present(self):
+        r = run_cli("analyze", "--input", str(FIXTURE))
+        d = json.loads(r.stdout)["details"]
+        for k in ("sounding_ratio", "leaps_per_min", "leap_resolve_rate",
+                  "asc_mean", "desc_mean", "scalar_run_mean", "scalar_run_max",
+                  "continuity_points"):
+            self.assertIn(k, d, k)
+        st = d["structure"]
+        for k in ("phrase_ending_alternation", "phrase_ending_alt_from",
+                  "phrase_ending_alt_len"):
+            self.assertIn(k, st, k)
+
+    def test_sustained_notes_have_high_sounding_ratio(self):
+        """长音叠着 → 发声占比 >1（音与音有重叠延音）。"""
+        notes = [{"pitch": 60 + i, "start_beat": i, "duration": 4, "velocity": 90}
+                 for i in range(8)]
+        d = self._analyze(notes)["details"]
+        self.assertGreater(d["sounding_ratio"], 1.0)
+
+    def test_detached_spiky_melody_is_called_spiky_not_broken(self):
+        """大跳 + 断奏 + 静音 → 命中「发声占比」提示，且被判为断裂。"""
+        notes = []
+        for i in range(12):
+            notes.append({"pitch": 60 if i % 2 == 0 else 72,
+                          "start_beat": i * 2.0, "duration": 0.5, "velocity": 90})
+        o = self._analyze(notes)
+        joined = " ".join(o["suggestions"])
+        self.assertIn("发声占比", joined)
+        self.assertLess(o["details"]["continuity_points"], 2.0)
+
+    def test_continuous_arpeggio_not_reported_as_broken(self):
+        """跳进为主但线条连续（宽音程琶音）→ 不报「旋律断裂」。
+
+        实测反例：《月光一》第一乐章级进仅 18%，但发声占比 117%，属合法织体写法。
+        旧实现在此会给出「旋律断裂、机器味明显」的误判。
+        """
+        notes = []
+        t = 0.0
+        for i in range(24):
+            notes.append({"pitch": 48 + [12, 19, 24][i % 3],
+                          "start_beat": t, "duration": 1.0, "velocity": 90})
+            t += 0.5
+        o = self._analyze(notes)
+        joined = " ".join(o["suggestions"])
+        self.assertNotIn("旋律断裂", joined)
+        self.assertNotIn("机器味明显", joined)
+
+    def test_scalar_run_suggestion(self):
+        """连续音阶跑动 → 命中「练习曲」提示。"""
+        notes = [{"pitch": 60 + (i % 12), "start_beat": i * 0.5, "duration": 0.5,
+                  "velocity": 90} for i in range(24)]
+        o = self._analyze(notes)
+        joined = " ".join(o["suggestions"])
+        self.assertIn("音阶跑动", joined)
+        self.assertGreater(o["details"]["scalar_run_mean"], 1.5)
+
+    def test_repeated_bar_pitch_string_suggestion(self):
+        """相邻小节音高串完全相同 → 命中「原地踏步」提示。"""
+        bar = [60, 62, 64, 65]
+        notes = []
+        for b in range(2):
+            for i, p in enumerate(bar):
+                notes.append({"pitch": p, "start_beat": b * 4 + i, "duration": 1,
+                              "velocity": 90})
+        o = self._analyze(notes)
+        joined = " ".join(o["suggestions"])
+        self.assertIn("完全相同", joined)
+
+
+class TestPhraseEndingAlternation(unittest.TestCase):
+    """乐句终止音的连续交替段（问答感）——信息项，不参与评分。"""
+
+    def _analyze(self, notes):
+        return json.loads(run_cli("analyze", "--input", "-",
+                                  stdin=json.dumps({"bpm": 120, "notes": notes})).stdout)
+
+    def test_alternating_endings_detected(self):
+        """构造 5 句，终止音在 72/67 之间交替 → 应检出交替段。"""
+        notes = []
+        for k, end in enumerate([72, 67, 72, 67, 72]):
+            base = k * 8.0
+            for i, p in enumerate([end - 2, end - 1, end]):
+                notes.append({"pitch": p, "start_beat": base + i, "duration": 1,
+                              "velocity": 90})
+        st = self._analyze(notes)["details"]["structure"]
+        self.assertTrue(st["phrase_ending_alternation"])
+        self.assertIsNotNone(st["phrase_ending_alt_from"])
+
+    def test_same_ending_every_phrase_not_alternating(self):
+        notes = []
+        for k in range(5):
+            base = k * 8.0
+            for i, p in enumerate([70, 71, 72]):
+                notes.append({"pitch": p, "start_beat": base + i, "duration": 1,
+                              "velocity": 90})
+        st = self._analyze(notes)["details"]["structure"]
+        self.assertFalse(st["phrase_ending_alternation"])
+
+
 class TestBarStructure(unittest.TestCase):
     """小节级结构指标 —— 固定窗口取样，不依赖休止切分。
 
@@ -638,6 +746,215 @@ class TestSongNameAndOutputDerivation(unittest.TestCase):
             src = self._write_song(td, "带标题的歌")
             data = json.loads(run_cli("generate", "--input", str(src)).stdout)
             self.assertEqual(data["name"], "带标题的歌")
+
+
+class TestHumanBaseline(unittest.TestCase):
+    """人写语料基线：包内预置的 reference/human-baseline.json + analyze --baseline。
+
+    要点：基线是「参照」不是「阈值」——已知好作品会落在分布外（实测 Wait Day 在 6 项
+    指标上超出 p05~p95），所以这里只测"能不能正确对照"，不测"是否达标"。
+    """
+
+    BASELINE = ROOT / "reference" / "human-baseline.json"
+
+    def _song(self, notes):
+        return json.dumps({"bpm": 90, "tracks": [
+            {"name": "旋律", "channel": 0, "program": 0, "notes": notes}]})
+
+    def test_bundled_baseline_is_shippable(self):
+        """包内基线必须存在、可解析、带来源与角色标注（开箱即用的前提）。"""
+        self.assertTrue(self.BASELINE.exists(), "缺少包内基线 %s" % self.BASELINE)
+        base = json.loads(self.BASELINE.read_text(encoding="utf-8"))
+        self.assertIn("POP909", base["source"])
+        self.assertGreaterEqual(base["songs_used"], 100)
+        self.assertLess(self.BASELINE.stat().st_size, 128 * 1024, "基线应保持小体积（几 KB 级）")
+        roles = base["roles"]
+        for k in ("breaths_per_beat", "step_share", "legato_rate"):
+            self.assertIn(k, roles, "缺角色标注: %s" % k)
+        self.assertEqual(roles["breaths_per_beat"]["role"], "diagnostic")
+        self.assertEqual(roles["legato_rate"]["role"], "convention_dependent")
+
+    def test_baseline_flag_reports_position_and_role(self):
+        notes = [{"pitch": 72 + (i % 3) * 2, "start_beat": i * 0.5,
+                  "duration": 0.5, "velocity": 90} for i in range(64)]
+        r = run_cli("analyze", "--input", "-", "--baseline", stdin=self._song(notes))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        b = json.loads(r.stdout)["baseline"]
+        self.assertIn("POP909", b["source"])
+        rows = {x["metric"]: x for x in b["metrics"]}
+        self.assertIn("breaths_per_beat", rows)
+        self.assertIn(rows["breaths_per_beat"]["position"],
+                      ("低于 p05", "区间内", "高于 p05", "高于 p95"))
+
+    def test_baseline_catches_no_breath_melody(self):
+        """完全不换气的旋律应被判低于 p05（四拍的病）。"""
+        notes = [{"pitch": 72 + (i % 3) * 2, "start_beat": i * 0.5,
+                  "duration": 0.5, "velocity": 90} for i in range(64)]
+        r = run_cli("analyze", "--input", "-", "--baseline", stdin=self._song(notes))
+        rows = {x["metric"]: x for x in json.loads(r.stdout)["baseline"]["metrics"]}
+        self.assertEqual(rows["breaths_per_beat"]["value"], 0.0)
+        self.assertEqual(rows["breaths_per_beat"]["position"], "低于 p05")
+
+    def test_baseline_missing_file_degrades_gracefully(self):
+        """基线文件缺失不该让 analyze 失败（退出码仍为 0，字段里给 error）。"""
+        notes = [{"pitch": 72, "start_beat": i * 0.5, "duration": 0.5, "velocity": 90}
+                 for i in range(32)]
+        r = run_cli("analyze", "--input", "-", "--baseline", str(ROOT / "nope.json"),
+                    stdin=self._song(notes))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("error", json.loads(r.stdout)["baseline"])
+
+    def test_baseline_warns_on_merged_voices(self):
+        """跨度超两个八度的单轨应提示「单轨多声部，对照不可用」。"""
+        notes = []
+        for b in range(16):
+            notes.append({"pitch": 38, "start_beat": b * 4, "duration": 4, "velocity": 90})
+            notes.append({"pitch": 84, "start_beat": b * 4 + 2, "duration": 1, "velocity": 90})
+        r = run_cli("analyze", "--input", "-", "--baseline", stdin=self._song(notes))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("单轨多声部", json.loads(r.stdout)["baseline"].get("warning", ""))
+
+    def test_baseline_reports_short_melody_as_error(self):
+        """音数不足时给出可读的 error，而不是抛出异常。"""
+        notes = [{"pitch": 72, "start_beat": i, "duration": 1, "velocity": 90} for i in range(5)]
+        r = run_cli("analyze", "--input", "-", "--baseline", stdin=self._song(notes))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("error", json.loads(r.stdout)["baseline"])
+
+    def test_calibrate_metrics_computable(self):
+        """calibrate.metrics_for 在合成旋律上给出可验证的值。"""
+        sys.path.insert(0, str(ROOT))
+        import calibrate                                            # noqa: E402
+
+        notes = []
+        for bar in range(8):                                        # 每小节 4 个八分 + 1 拍休止
+            for k in range(4):
+                notes.append({"pitch": [72, 74, 76, 79][k], "start_beat": bar * 4 + k * 0.5,
+                              "duration": 0.5, "velocity": 90})
+        m = calibrate.metrics_for(notes, 90)
+        self.assertIsNotNone(m)
+        self.assertEqual(m["pitch_class_count"], 4)
+        self.assertEqual(m["span"], 7)                              # 72..79
+        self.assertAlmostEqual(m["breaths_per_beat"], 7 / 30, places=4)
+        # 分母是「首音起点 → 末音终点」的跨度：0 起、末音止于 30 拍，中间 7 次换气
+        self.assertAlmostEqual(m["breaths_per_window"], 7 / 8, places=4)   # 8 个 4 拍窗口
+        self.assertEqual(m["breath_position_consistency"], 1.0)     # 每次换气都在同一拍位
+        self.assertEqual(m["opening_direction_concentration"], 1.0)  # 每窗口同一起句型
+
+    def test_calibrate_skips_too_short(self):
+        sys.path.insert(0, str(ROOT))
+        import calibrate                                            # noqa: E402
+        self.assertIsNone(calibrate.metrics_for(
+            [{"pitch": 72, "start_beat": i, "duration": 1, "velocity": 90} for i in range(5)], 90))
+
+
+class TestPlanCheck(unittest.TestCase):
+    """计划层检查：门只查"结构件在不在"，统计位置/风格选择一律降为提示。
+
+    这一层的验收标准是**已知好作品必须能通过**：实测 Wait Day（人写）与晚归 10/10，
+    四拍因"零呼吸点"被挡；而 Wait Day 在"全 4 倍数段落/29% 高潮/单声部/终止音不交替"
+    四项上都会被误伤，所以那四项进的是提示栏——下面的测试就锁这个划分。
+    """
+
+    @staticmethod
+    def _plan(**over):
+        plan = {
+            "name": "T", "bpm": 90, "meter": "4/4", "window_beats": 4,
+            "key": {"root": "C", "mode": "major"},
+            "form": [{"label": "A", "bars": [1, 4], "function": "establish"},
+                     {"label": "B", "bars": [5, 8], "function": "develop"}],
+            "harmony": [{"bar": b, "chords": [["C", "maj", 4]]} for b in range(1, 9)],
+            "cadences": [{"bar": 4, "type": "half"}, {"bar": 8, "type": "authentic"}],
+            "voices": [{"name": "旋律", "band": [72, 84], "role": "line"},
+                       {"name": "伴奏", "band": [48, 64], "role": "support"}],
+            "texture": [{"bars": [1, 4], "figure": "半分解", "density": 3},
+                        {"bars": [5, 8], "figure": "八分分解", "density": 6}],
+            "phrases": [{"bars": [1, 4], "start": "C5", "goal": "E5",
+                         "breath": "2:2", "cadence": "G4"},
+                        {"bars": [5, 8], "start": "E5", "goal": "G5",
+                         "breath": "6:2", "cadence": "C5"}],
+            "climax": {"bar": 6, "note": "G5"},
+            "energy": [{"bars": [1, 4], "level": 0.6}, {"bars": [5, 8], "level": 0.8}],
+            "motif": {"degrees": [1, 2, 3],
+                      "appearances": [{"bar": 1, "op": "state"}, {"bar": 5, "op": "transpose"}]},
+        }
+        plan.update(over)
+        return plan
+
+    def _gates(self, plan):
+        sys.path.insert(0, str(ROOT))
+        import plan_check                                            # noqa: E402
+        return [(n, ok) for n, ok, _w, g in plan_check.check_plan(plan) if g]
+
+    def test_complete_plan_passes_all_gates(self):
+        bad = [n for n, ok in self._gates(self._plan()) if not ok]
+        self.assertEqual(bad, [], "完整计划不该有不通过的门：%s" % bad)
+
+    def test_missing_goal_is_a_gate(self):
+        """没有目标音 = 没有梯度来源，必须挡住。"""
+        p = self._plan()
+        p["phrases"][0].pop("goal")
+        bad = [n for n, ok in self._gates(p) if not ok]
+        self.assertTrue(any("目标音" in n for n in bad), bad)
+
+    def test_no_breath_point_is_advisory_not_a_gate(self):
+        """全曲无句内换气只作提示——POP909 300 首里 37.7% 的真作品做不到，
+        16.3% 一次都没有，属风格选择（唱得连 vs 说得分明）。"""
+        p = self._plan()
+        for ph in p["phrases"]:
+            ph["breath"] = None
+        self.assertEqual([n for n, ok in self._gates(p) if not ok], [],
+                         "无呼吸点不该是门（效度检验：37.7% 误杀真人作品）")
+        sys.path.insert(0, str(ROOT))
+        import plan_check                                            # noqa: E402
+        adv = [n for n, _ok, _w, g in plan_check.check_plan(p) if not g and "呼吸点" in n]
+        self.assertTrue(adv, "应当出现在提示栏里")
+
+    def test_flat_energy_is_a_gate(self):
+        """密度一条平线（四拍：每 4 小节都是 20 音）是门——真人语料 p05 是 1.36 起伏。"""
+        p = self._plan()
+        p["energy"] = [{"bars": [1, 4], "level": 1.0}, {"bars": [5, 8], "level": 1.0}]
+        bad = [n for n, ok in self._gates(p) if not ok]
+        self.assertTrue(any("能量" in n for n in bad), bad)
+
+    def test_colliding_voice_bands_are_a_gate(self):
+        """旋律与伴奏音区相撞（四拍：间隔 0 半音）必须挡住。"""
+        p = self._plan(voices=[{"name": "旋律", "band": [60, 72], "role": "line"},
+                               {"name": "伴奏", "band": [48, 65], "role": "support"}])
+        bad = [n for n, ok in self._gates(p) if not ok]
+        self.assertTrue(any("音区" in n for n in bad), bad)
+
+    def test_style_choices_stay_advisory(self):
+        """Wait Day 的四项风格选择只能出现在提示里，绝不可当门。"""
+        p = self._plan()
+        p["form"] = [{"label": "A", "bars": [1, 4], "function": "establish"},
+                     {"label": "A'", "bars": [5, 8], "function": "develop"}]
+        p["climax"] = {"bar": 2, "note": "G5"}          # 25%，早现
+        p["voices"] = [{"name": "旋律", "band": [72, 84], "role": "line"}]   # 单声部
+        p["texture"] = []
+        p["phrases"][0]["cadence"] = "C5"               # 终止音不交替
+        p["phrases"][1]["cadence"] = "C5"
+        bad = [n for n, ok in self._gates(p) if not ok]
+        self.assertEqual(bad, [], "风格选择被误判成了门：%s" % bad)
+
+    def test_derive_and_realize_roundtrip(self):
+        """反推的计划对自己的音符必然通过实现层——这条说明实现层要有牙齿，计划必须独立写。"""
+        sys.path.insert(0, str(ROOT))
+        import plan_check                                            # noqa: E402
+        notes = []
+        for bar in range(8):                                        # 每小节：C5 D5 E5 G5 + 空一拍
+            for k, p in enumerate([72, 74, 76, 79]):
+                notes.append({"pitch": p, "start_beat": bar * 4 + k * 0.5,
+                              "duration": 0.5, "velocity": 90})
+        song = {"name": "T", "bpm": 90,
+                "tracks": [{"name": "旋律", "channel": 0, "program": 0, "notes": notes}]}
+        with tempfile.TemporaryDirectory() as td:
+            sp = Path(td) / "song.json"
+            sp.write_text(json.dumps(song, ensure_ascii=False), encoding="utf-8")
+            plan = plan_check.derive(str(sp), None)
+            rows = [r for r in plan_check.check_realize(plan, song, {"旋律": notes}) if r[3]]
+            bad = [n for n, ok, _w, _g in rows if not ok]
+            self.assertEqual(bad, [], "反推计划对自己的音符应全过，实际不通过：%s" % bad)
 
 
 if __name__ == "__main__":

@@ -40,6 +40,13 @@ metadata:
 | `inspect --input song.mid` | 解析回读 .mid 自检 | 0 / 1 |
 | `scale --root C4 --type major [--list/--chord/--snap/--suggest]` | 音阶/和弦计算查表 | 0 / 2 |
 
+另有两个独立脚本（同为 aria-midi 工具包内，非子命令）：
+
+| 脚本 | 用途 |
+|------|------|
+| `plan_check.py --plan p.json [--song s.json]` / `--derive s.json` | **计划层检查**：写音符之前查结构件、写完查实现 |
+| `calibrate.py --corpus-dir DIR` | 用人写语料标定结构指标分位数（包内基线即它的产物） |
+
 ## 工具调用操作细节
 
 ### 命令定位
@@ -79,7 +86,7 @@ python <SKILL.md 所在目录>/../../toolkits/aria-midi/aria_midi.py inspect --i
 
 | 退出码 | 含义 | 放行条件 |
 |--------|------|----------|
-| `0` | 成功 | `validate` 必须为 `0`；`analyze` 还需 `score >= 7` |
+| `0` | 成功 | `validate --strict` 必须为 `0`。**`analyze` 不参与放行**——它是诊断（总分在音符层面无梯度，见第 5 步） |
 | `1` | 数据错误 | 不允许放行；读 `errors` / `warnings` 修正 |
 | `2` | 用法/IO 错误 | 检查参数和文件路径后重试 |
 
@@ -99,6 +106,7 @@ python <SKILL.md 所在目录>/../../toolkits/aria-midi/aria_midi.py inspect --i
 ```
 <项目>/
 └── <歌名>/                     # 目录名 = song.json 顶层的 name
+    ├── plan.json              # 八层计划（曲式/和声/音区/织体/乐句四列/骨架/能量/动机）
     ├── song.json              # 谱面（{"name": "<歌名>", "bpm": ..., "tracks": [...]}）
     ├── chords.json            # 和弦进行（供 analyze 检查强拍匹配；可选）
     ├── <歌名>.mid             # 生成物，由 name 自动派生
@@ -178,42 +186,80 @@ python <SKILL.md 所在目录>/../../toolkits/aria-decode/aria_decode.py decode 
   aria-midi scale --root G4 --type major --chord dom7  # 和弦音
   ```
 
-### 第 3 步：规划结构（套用模式库）
-1. **段落**（3–5 段）：按 pattern-library.md §5 选结构模板（流行 ABABCB / AABA / EDM 能量曲线 / Lo-fi 循环），标注各段小节数、音域、力度、密度
-2. **和弦进行**：按情绪查 pattern-library.md §1.7 决策表 → 选 §1 配方（如欢快流行用 I–V–vi–IV、日系抒情用 4536、悲伤用 i–VII–VI–V），写入 `chords.json`（供 analyze 检查强拍匹配）
-3. **乐句模块化规划**（连贯性的关键，2026-08 联网调研增强）：每段内部按「动机 → 乐节 → 乐句 → 乐段」四级搭建，先把乐句计划写成表格再写音符：
-   - **选乐句图式**：起承转合四句体（a–a'–b–a'，华语/民谣默认）/ Period 4+4（前句半终止、后句全终止，同头异尾）/ Sentence 2+2+4（动机+模进+碎片化终止）/ AABA·AAAB·ABAB·AABC（流行乐句重复图式）——配方见 pattern-library.md §4.2/§4.2.1
-   - **定乐句终止点**：逐句写下结束音——问句落属音/上主音（开放），答句与末句落主音（收束）；全曲最后一音必须是主音长音（≥2 拍）
-   - **标高潮位置**：全曲最高音落在 50%–80% 处（拱形轮廓），主歌不得提前用掉
-   - **同头原则**：相邻乐句共享前 2–3 音的音程走向，只改结尾（analyze 的 contour_reuse_pairs 会检查这一点）；可用「顶真」——后句第一音 = 前句结束音
-4. **织体与节奏**：从 §2 选伴奏织体（Alberti/琶音/半分解/柱式/stride/oom-pah/waltz/八度低音）、从 §3 选节奏律动（流行切分/爵士 comping/EDM 鼓组）
-5. **音轨分工**：低音 36–50 / 和弦 48–67 / 旋律 60–84，逐轨完成（先旋律后低音）
+### 第 3 步：写 `plan.json`（八层计划）→ 跑计划检查
 
-### 第 4 步：写 song.json（动机式作曲）
-严格按 composition-rules.md 的 7 大规则逐个音符写：
-- 先发明 2–5 音动机，再发展（重复→移调→变奏）
-- 强拍（4/4 的第 1、3 拍）必须落在当前和弦的和弦音上
-- 每 1–2 拍后留 0.25–0.5 拍休止；乐句间留 0.5–1 拍呼吸
-- 力度成弧线（乐句内极差 ≥15），相邻音符力度不可相同
-- 大跳（≥4 半音）后反向级进解决；时值至少混用 3 种
+**先写计划，再写音符。** 计划层是梯度的来源：没有目标，就只剩"满足禁令"。
+字段与完整示例见 `references/plan-schema.md`；人写作品里提取出的可执行语法见
+`references/human-grammar.md`（九条，含"动机只要三个音""每小节固定位置呼吸"等可直接抄的写法）。
+
+1. **曲式**：2–5 段，每段给 `label` 与 `function`（establish/develop/contrast/climax/release）
+2. **和声**：逐小节声明进行；**每段末尾标注终止式**（正格/半/变格/阻碍）。和声可以放心循环——
+   实测 Wait Day 的实质和声是 G–Am 交替、F-G-Am-G 循环 12 遍，仍然好听；缺陷是"各层同周期"
+   而不是"循环"本身
+3. **音区**：给每个声部声明 `band`；**多声部时间隔 ≥7 半音**（机写常见毛病是旋律与伴奏相撞）
+4. **织体**：≥2 种，且密度随段落变化（不是常数）
+5. **乐句四列**（**本层最关键**）：每句写下 `start` / `goal` / `breath` / `cadence`——
+   起音、**目标音**、呼吸点、终止音。目标音是让"该往哪走"变得可见的唯一手段
+6. **骨架**：声明全曲最高音 `climax:{bar,note}`
+7. **能量**：逐段 `level`，至少一处起伏
+8. **动机**：定义级数 `degrees` + 出现排期 `appearances`，**≥2 次出现且含 ≥1 次非原样**
+   （transpose/invert/retrograde/augment/truncate…）
+
+```bash
+aria-midi plan_check --plan <歌名>/plan.json          # 计划层：门必须全过
+```
+门的划分与理由见 `plan-schema.md`；**凡"统计位置/风格选择"类一律只作提示**——
+实测 Wait Day 在"全 4 倍数段落""29% 高潮""单声部""终止音不交替"四项上都会被误伤，
+所以它们进的是提示栏。
+
+> 已有旧作想补计划：`plan_check --derive <歌名>/song.json --chords <歌名>/chords.json --out <歌名>/plan.json`
+
+### 第 4 步：写 song.json（照着计划实现，不是照着规则凑）
+- 每个音都在实现计划：**强拍落和弦音**、乐句走向 `goal`、在 `breath` 处留空当、句末落 `cadence`
+- 骨架音先定死（每句的起音/目标音/终止音），再填其余音符——**先骨架后填充**
+- 动机按 `appearances` 排期出现，每次至少变一个元素
 - 所有 start_beat / duration 必须是 0.25 的整数倍
 
-规则是默认值，不是判决：有意打破时读 `references/anti-formula.md`，每次只打破 1–2 条，并在摘要中记录 `打破规则：X，目的：Y`。
+**规则速查仍是默认值，但不再当门**（详版见 composition-rules.md；证伪清单见 anti-formula.md §5）：
+动机驱动 / 强拍和弦音 / 节奏呼吸 / 力度弧线 / 跳级平衡 / 段落对比 / 人性化。
+有意打破时读 `references/anti-formula.md`，每次只打破 1–2 条，并在摘要中记录
+`打破规则：X，目的：Y`。
 
-### 第 5 步：验证 → 生成 → 自检（循环直到达标）
+写完音符，**再查一次计划有没有被实现**：
 ```bash
-aria-midi validate --input <歌名>/song.json --strict     # 必须 0 errors
-aria-midi analyze  --input <歌名>/song.json --chords <歌名>/chords.json --key-root C4
-# 放行条件：score ≥ 7 且 passed=true（技术分与音乐性分都要 ≥6），缺一回到第 4 步
-# 连贯性条件：structure_score ≥ 6（1.2.0 起新增的第三栏：乐句切分/轮廓复用/高潮位置/终止稳定），
-#   低于 6 优先看 details.structure 与 suggestions——通常是「只切出 1 个乐句」「乐句同头缺失」
-#   「末句没落主音」三类问题，回第 3 步修乐句计划比重写音符省力
-# 传 --key-root 才会检查终止稳定性（末句落主音/倒数句半终止），调式从第 1 步的需求来
-# 跳进型风格（爵士/琶音/蓝调/EDM/Lo-fi）用 --style jazz 等显式豁免级进占比约束，
-# 不要在 melodic 模式下靠「保留并记录理由」硬扛跳进扣分
+aria-midi plan_check --plan <歌名>/plan.json --song <歌名>/song.json
+# 查：骨架音/目标音是否真的出现、呼吸点是否真是空隙、最高音是否等于声明值、
+#     声部是否落在音区带内、动机首次陈述是否按计划级数出现
+# 注意：用 --derive 反推的计划自查必然通过（它就是从那些音符抄的）——
+#       实现层要有牙齿，计划必须是独立写下的
+```
+
+### 第 5 步：验证 → 生成 → 自检（**analyze 是诊断，不是闸门**）
+```bash
+aria-midi validate --input <歌名>/song.json --strict     # ← 唯一的硬闸：必须 0 errors
+aria-midi analyze  --input <歌名>/song.json --chords <歌名>/chords.json --key-root C4 --baseline
+# ⚠️ 放行条件里**没有分数**。总分在音符层面是平的：把一个旋律音在 ±7 半音内遍历 15 个候选，
+#    实测总分一分不动（四拍恒 8.0 / 余温恒 9.0 / 未寄出的信恒 10.0）。零梯度的分数
+#    既不能指方向，也不该当闸门——它只用来读 details 与 suggestions。
+# 看什么：
+#   1) --baseline 的 role=diagnostic 三项落点（breaths_per_beat / step_share /
+#      breath_position_consistency）。落在 p05~p95 之外才提示，**并且只在两端都是病时才提**
+#      （breaths_per_beat=0 是四拍的病，>0.5 是霓虹夜行的病；实测 Wait Day 0.11 落在区间内）
+#      ⚠️ 名字里带 window_ 的指标按 4 拍窗口算——语料里没有可识别的真实小节，
+#         非 4/4 的作品请按"窗口"读，不要按"小节"读
+#   2) details 里的线条四项：sounding_ratio / scalar_run_mean / continuity_points /
+#      phrase_ending_alternation
+#   3) role=style 与 role=convention_dependent 的指标**一律不判**——已知好作品会落在分布外
+#      （Wait Day 在 6 项指标上超出 p05~p95），拿它们当闸门会误伤
+# 真正的放行条件：validate 0 错误 + 人耳听过（见下）
 aria-midi generate --input <歌名>/song.json             # --output 可省，派生 <歌名>/<歌名>.mid
 aria-midi inspect  --input <歌名>/<歌名>.mid             # 核对音符数/BPM 往返一致
+# 与参考人写作品对风格（风格敏感时）：aria-midi compare --input <歌名>/song.json --reference examples/midi/xxx.mid
 ```
+
+**最终判据是耳朵。** `analyze` 无法判断"好不好听"（见 composition-rules.md §7 与
+anti-formula.md §5）：交付前用 `aria-roll` 出 HTML，至少自己听一遍；有条件时按
+"旋律性 / 结构感 / 自然度"三个维度与一首真实作品盲听对比，**别只给"好不好听"一个总评**。
 
 ### 第 6 步：风格锚定（对标真实案例，风格敏感时执行）
 ```bash
@@ -237,16 +283,28 @@ aria-midi compare --input <歌名>/song.json --reference examples/midi/tropical-
 
 ## 质量检查清单（交付前逐项打勾）
 
-- [ ] `validate --strict` 通过（0 errors）
-- [ ] `analyze` 分数 ≥ 7 且无未处理建议；`structure_score` ≥ 6
-- [ ] 乐句计划已执行：每段选定乐句图式（起承转合/period/sentence/AABA 系），逐句终止点符合「问句开放、答句收束、末句主音」
-- [ ] 每个音轨音域符合分工（低音 36–50 / 和弦 48–67 / 旋律 60–84）
-- [ ] 强拍音符落在 chords.json 定义的和弦音上（chord_tone_rate ≥ 60%）
-- [ ] 全曲至少 2 处明显休止；力度极差 ≥ 15；最高音在 50%–80% 处
+**计划层（写音符之前）**
+- [ ] `plan_check --plan <歌名>/plan.json` **门全过**；不通过就回第 3 步改计划，别去改音符
+- [ ] 乐句四列齐全，特别是**每句都有 `goal`（目标音）**——没有目标就只能约束满足
+- [ ] 动机 ≥2 次出现且含一次非原样（transpose/invert/…），排期写进了 `appearances`
+
+**实现层（写完音符之后）**
+- [ ] `validate --strict` 通过（0 errors）——**唯一的硬闸**
+- [ ] `plan_check --plan <歌名>/plan.json --song <歌名>/song.json` 实现层全过
+      （骨架音/目标音真的出现、呼吸点是真空隙、最高音等于声明值、声部在音区带内）
+- [ ] `analyze --baseline` 跑过：`role=diagnostic` 三项没有落在 p05~p95 之外（落在外面才需要看，
+      且只在"两端都是病"时才算问题）；`role=style` / `convention_dependent` 一律不判
+- [ ] **人耳听过**：`aria-roll` 出 HTML 自己听一遍；有条件时与真实作品盲听对比三个维度
+
+**参考（只读，不作门）**
+- [ ] 线条四项：`sounding_ratio` ≥0.8、`scalar_run_mean` ≤1.5、`continuity_points` ≥2.5、连奏率 ≥0.75
+- [ ] 没有踩反模式（§3.5.3 六条 + anti-formula.md §5 证伪清单）
+- [ ] 强拍和弦音命中率 `chord_tone_rate` ≥ 60%
 - [ ] `generate` + `inspect` 往返：音符数、BPM、时长一致
-- [ ] 产物落在 `<歌名>/` 目录里、`song.json` 顶层有 `name`；没有往项目根目录丢 `song.json`
+- [ ] 产物落在 `<歌名>/` 目录里（`plan.json` / `song.json` / `chords.json` / `.mid` / `.html`）、
+      `song.json` 顶层有 `name`；没有往项目根目录丢 `song.json`
 - [ ] 诊断产物（回读/事件明细/解码结果）未落盘，或已落盘但标注为可再生
-- [ ] 摘要包含 BPM / 调式 / 段落 / 音轨 / 和弦进行 / 乐句图式
+- [ ] 摘要包含 BPM / 调式 / 段落 / 音轨 / 和弦进行 / 乐句图式 / 动机与再现位置
 
 ## 最小示例
 
@@ -288,12 +346,14 @@ aria-midi compare --input <歌名>/song.json --reference examples/midi/tropical-
 
 | 文件 | 何时读 |
 |------|--------|
-| `references/composition-rules.md` | 每次写音符前必读（段落+和弦+7 规则+清单） |
+| `references/composition-rules.md` | 每次写音符前必读（段落+和弦+7 规则+**§3.5 情感线与线条**+§7 阈值局限+清单） |
 | `references/pattern-library.md` | **规划结构时必读**（进行配方/织体/节奏/旋律技法/结构模板/情绪映射） |
 | `references/melody-chord-writing.md` | **写旋律/配和弦时必读**（强拍和弦音、和弦外音、真实歌曲与编曲案例） |
 | `references/web-research-guide.md` | 风格未知 / 真实案例 / analyze 不达标时必读：模糊联网检索与质量门槛 |
 | `references/midi-schema.md` | 不确定 JSON 字段/约束/GM 音色时 |
 | `references/examples.md` | 需要完整范例参考时 |
+| `references/plan-schema.md` | **写 plan.json 时必读**（八层字段 + 门/提示的划分 + 反向验收） |
+| `references/human-grammar.md` | **写旋律前必读**（从真实作品提取的九条可执行语法） |
 | `references/anti-formula.md` | 写第二稿时必读：打破公式、制造记忆点 |
 | `../aria-music-theory/references/styles/*.md` | 按风格需要（流行/EDM/爵士/Tropical/通用） |
 | `../aria-music-theory/references/electronic-arrangement.md` | 写电子音乐前必读：EDM 乐理 + 舞曲结构 + 提示词模板 |

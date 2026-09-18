@@ -927,17 +927,156 @@ def _analyze_structure(srt, key_pc=None):
                 "倒数乐句的结束音不是属音/上主音，段尾缺少半终止铺垫；"
                 "问答句结构里前句停属音（开放）、后句停主音（收束）是最省力的连贯性手段")
 
+    # ── 问答交替：相邻乐句的终止音在两组之间轮换（结构感的来源之一）──
+    # 实测参照：Wait Day 的 8 个乐句终止音是 G5→D5→G5→D5→G5→D5→G5→D5（属音↔主音交替），
+    # 机写作品则普遍无此交替。这是「只改每句最后一个音」就能拿到的结构感。
+    # **只作信息项，不参与评分**：该判据目前只有 Wait Day 一个正例，
+    # 且在反向样本上会因巧合命中（致爱丽丝、Wait Night 都被误判为 True）。
+    # 按本项目的方法论（composition-rules.md §8），单一示例标定出的特征不得进闸门。
+    ending_alt = None
+    alt_from = alt_len = None
+    if len(endings) >= 4:
+        # 找最长的「连续若干句在两音之间交替」段。
+        # 注意不能用固定窗口回看：交替段的两端紧邻着非交替句（如 D A G A G A D 里的 D），
+        # 固定窗口会把它们算进来而误判为"不成交替"——实测《午后微光》的
+        # D A G A G A D E A G 因此漏检。改为逐起点向右延伸，只约束该段自身的音级集合。
+        best_len, best_start = 0, None
+        for i in range(len(endings)):
+            vals = {endings[i]}
+            j = i
+            while (j + 1 < len(endings) and endings[j + 1] != endings[j]
+                   and len(vals | {endings[j + 1]}) <= 2):
+                vals.add(endings[j + 1])
+                j += 1
+            if j - i + 1 > best_len:
+                best_len, best_start = j - i + 1, i
+        ending_alt = bool(best_len >= 4)      # 连续 ≥4 句、只用 2 个音级交替
+        if ending_alt:
+            alt_from, alt_len = best_start, best_len
+
     structure_score = round(points / max_points * 10, 1) if max_points else None
     info = {
         "phrase_count": len(phrases),
         "phrase_lengths": [len(p) for p in phrases],
         "phrase_endings_pc": endings,
+        "phrase_ending_alternation": ending_alt,
+        "phrase_ending_alt_from": alt_from,
+        "phrase_ending_alt_len": alt_len,
         "contour_reuse_pairs": contour_reuse,
         "climax_position": f"{climax_pos * 100:.0f}%",
         "final_on_tonic": final_on_tonic,
         "bar_structure": bar_info,
     }
     return info, suggestions, structure_score
+
+
+def _is_figurative(sounding_ratio, step_count):
+    """跳进为主但属合法织体写法（琶音/音型化），而非"旋律断裂"。
+
+    两个条件缺一不可：
+      · 线条连续（发声占比 ≥0.9，音与音叠着或首尾相接）
+      · 至少存在一些级进（step_count ≥3）——真织体写法里级进与跳进并存
+    反例：《月光一》第一乐章 级进仅 18% 但发声占比 117%、级进 107 次 → 合法织体；
+    两音交替 16 音的测试素材 级进 0 次（纯振荡）→ 不合法。
+    只用"发声占比"会放过纯振荡；只用"大跳密度"会误伤宽音程琶音。
+    """
+    return sounding_ratio >= 0.9 and step_count >= 3
+
+
+def _continuity_points(sounding_ratio, leap_resolve_rate, leaps_per_min,
+                       scalar_run_mean, n_big):
+    """线条连续性（0–3.5）——感情与结构的主要载体。
+
+    三项相加，上限 3.5：
+      · 发声占比  ≤2.0   音与音是否连成线（>1.0 表示有重叠延音）
+      · 音阶跑动  ≤1.5   连续同向级进的均长（越长越像练习曲）
+
+    实测依据（人写 9 首含两首贝多芬名作 vs 机写 5 首，见 composition-rules.md
+    「情感线与线条」）：
+      · 发声占比：人写 0.86–1.50，机写 0.58–0.84 —— 方向正确，权重最大
+      · 音阶跑动均长：人写 1.01–1.26，机写 1.50–1.68 —— 方向正确
+
+    **刻意不计入两项指标**，它们实测方向错误或不分离，只作信息项与提示输出：
+      · 大跳解决率：机写 96–100%、人写 4–20%（反的）。级进型旋律的任何跳进都会被
+        后一个级进"接住"，计为正分等于奖励级进型写作——而那正是"音阶练习曲"的成因。
+      · 大跳频次：按真·每分钟算，月光一 51/分、致爱丽丝 31/分、Wait Day 25/分、
+        霓虹夜行 Lead 87/分 —— 好作品也在高位，不分离。
+    """
+    p = 0.0
+    if sounding_ratio >= 0.9:
+        p += 2.0
+    elif sounding_ratio >= 0.8:
+        p += 1.1
+    elif sounding_ratio >= 0.6:
+        p += 0.4
+    if scalar_run_mean <= 1.5:
+        p += 1.5
+    elif scalar_run_mean <= 1.8:
+        p += 0.6
+    return min(3.5, p)
+
+
+# ══════════════════════════════════════════════════════════════
+# 人写语料基线对照（--baseline）
+#   分位数来自 calibrate.py 对真实人写语料（包内预置：POP909 300 首）的标定。
+#   定位：**描述性参照，不参与任何判定**——已知好作品会落在分布之外
+#   （实测 Wait Day 在 6 项指标上超出 p05~p95），所以这里绝不设通过线。
+# ══════════════════════════════════════════════════════════════
+def _default_baseline_path():
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "reference", "human-baseline.json")
+
+
+def _baseline_compare(notes, path):
+    """把当前旋律放到人写语料的分位数坐标里。"""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import calibrate as _cal            # 同目录；calibrate 反过来 import 本模块，故延迟导入
+    if not path or path == "auto":
+        path = _default_baseline_path()
+    with open(path, encoding="utf-8") as fh:
+        base = json.load(fh)
+    # 必须用基线自己的窗口算，否则 window_* 系列与基线不可比
+    w = float(base.get("window_beats") or 4.0)
+    old_w = _cal.BEATS_PER_BAR
+    _cal.BEATS_PER_BAR = w
+    try:
+        m = _cal.metrics_for(notes, 120)
+    finally:
+        _cal.BEATS_PER_BAR = old_w
+    if not m:
+        return {"error": "旋律音数不足，无法对照（至少 20 音）"}
+    roles = base.get("roles") or {}
+    rows = []
+    for k, v in (base.get("metrics") or {}).items():
+        if m.get(k) is None:
+            continue
+        x = float(m[k])
+        if x < v["p05"]:
+            pos = "低于 p05"
+        elif x > v["p95"]:
+            pos = "高于 p95"
+        else:
+            pos = "区间内"
+        rows.append({"metric": k, "value": round(x, 3), "p05": v["p05"],
+                     "p50": v["p50"], "p95": v["p95"], "position": pos,
+                     "role": (roles.get(k) or {}).get("role", "descriptive")})
+    # 诊断型排前面，便于一眼看到需要留意的地方
+    rows.sort(key=lambda r: (r["role"] != "diagnostic", r["metric"]))
+    out = {
+        "source": base.get("source"), "songs": base.get("songs_used"),
+        "note": "这是参照不是阈值：role=style 的指标已知好作品会在分布外，"
+                "禁止据此判定；role=convention_dependent 跨工具不可比。",
+        "metrics": rows,
+    }
+    # 单轨多声部文件会把伴奏算进「旋律」，指标全废——先提醒，别让人误读
+    if notes:
+        span = max(n["pitch"] for n in notes) - min(n["pitch"] for n in notes)
+        if span > 24:
+            out["warning"] = (
+                "被分析的音轨跨度 %d 个半音，像是把伴奏和旋律混在一轨（单轨多声部）。"
+                "此时指标会被跨声部大跳污染，对照结果不可用——"
+                "请先用 --track 指定旋律轨，或把声部拆开。" % span)
+    return out
 
 
 def cmd_analyze(args):
@@ -955,6 +1094,13 @@ def cmd_analyze(args):
 
     style = (args.style or "melodic").lower()
     style_exempt = style in _LEAPY_STYLES
+
+    try:
+        bpm = float(song.get("bpm", 120) or 120)
+    except (TypeError, ValueError):
+        bpm = 120.0
+    if not (40 <= bpm <= 300):
+        bpm = 120.0
 
     chords = []
     if args.chords:
@@ -1020,6 +1166,48 @@ def cmd_analyze(args):
     total_moves = step_count + leap_count
     step_ratio = step_count / total_moves if total_moves else 0.0
 
+    # ── 线条类指标（情感/结构的主要载体，见 references/composition-rules.md「情感线与线条」）──
+    # 动机：旋律"有没有感情"主要不住在音高选择上，而住在音与音之间是否连成一条线。
+    # 实测支撑：月光一（名作）大跳 62 次/分钟仍好听，因其发声占比 117%（音与音叠着）；
+    # 霓虹夜行的 Lead 大跳 41 次/分钟却"一串断开的尖峰"，发声占比仅 58%。
+    span = (float(srt[-1]["start_beat"]) + float(srt[-1].get("duration", 1))
+            - float(srt[0]["start_beat"])) if srt else 0.0
+    sounding = sum(float(n.get("duration", 1)) for n in srt)
+    sounding_ratio = min(1.5, sounding / span) if span > 0 else 0.0      # >1 表示音与音有重叠延音
+    minutes = span / bpm if span > 0 and bpm else 0.0   # 拍 ÷ (拍/分) = 分钟
+
+    # 大跳解决率：≥4 半音的大跳之后，是否反向级进（≤2 半音）接住。
+    # 注意口径：这里的"大跳"是 composition-rules 定义的 ≥4 半音，
+    # 与上面 step/leap 统计里的 leap（≥3 半音，即小三度起算）不同——
+    # 后者是既有契约（step_ratio 的算法，测试有断言），不在这里改动。
+    ivs = [pitches[i] - pitches[i - 1] for i in range(1, len(pitches))]
+    big_idx = [i for i, x in enumerate(ivs) if abs(x) >= 4]
+    resolved = sum(1 for i in big_idx
+                   if i + 1 < len(ivs) and (ivs[i + 1] > 0) != (ivs[i] > 0)
+                   and abs(ivs[i + 1]) <= 2)
+    leap_resolve_rate = resolved / len(big_idx) if big_idx else None
+
+    # 大跳频次同样按 ≥4 半音口径（与规则文档一致，阈值据此标定）
+    leaps_per_min = (len(big_idx) / minutes) if minutes > 0 else 0.0
+
+    up = [x for x in ivs if x > 0]
+    down = [-x for x in ivs if x < 0]
+    asc_mean = (sum(up) / len(up)) if up else 0.0
+    desc_mean = (sum(down) / len(down)) if down else 0.0
+
+    # 音阶跑动：同方向级进的连续长度（连续上下行音阶是"练习曲"听感的来源）
+    run_lens, cur = [], 1
+    for i in range(1, len(ivs)):
+        same_dir = (ivs[i] > 0) == (ivs[i - 1] > 0)
+        if abs(ivs[i]) <= 2 and abs(ivs[i - 1]) <= 2 and same_dir and ivs[i] != 0:
+            cur += 1
+        else:
+            run_lens.append(cur)
+            cur = 1
+    run_lens.append(cur)
+    scalar_run_mean = (sum(run_lens) / len(run_lens)) if run_lens else 1.0
+    scalar_run_max = max(run_lens) if run_lens else 1
+
     motif_reused = _motif_reuse(pitches)
 
     suggestions = []
@@ -1043,8 +1231,18 @@ def cmd_analyze(args):
                 "这个特征通常不是旋律本身的问题，而是**低音/和弦/旋律被压在同一个音轨里**，"
                 "跨声部的相邻音造成了虚假大跳。请先按音区拆声部（或改用多轨 MIDI）再评分，"
                 "否则本轨的各项旋律指标都不可信")
+        elif step_ratio < 0.4 and _is_figurative(sounding_ratio, step_count):
+            # 跳进为主但线条连续：琶音/音型化写法，不判为缺陷
+            suggestions.append(
+                f"级进占比 {step_ratio * 100:.0f}%（跳进为主），但线条连续（发声占比 "
+                f"{sounding_ratio * 100:.0f}%），属琶音/音型化写法——无需修改。"
+                "若目标风格不是琶音型，可按大跳频次与下行幅度两项提示调整")
         elif step_ratio < 0.4:
-            suggestions.append(f"级进占比仅 {step_ratio * 100:.0f}%（跳进 {leap_count} 次 vs 级进 {step_count} 次），旋律断裂、机器味明显；除非是爵士/琶音/蓝调风格，否则应把跳进控制在级进的 1/3 以内")
+            suggestions.append(
+                f"级进占比仅 {step_ratio * 100:.0f}%（跳进 {leap_count} 次 vs 级进 {step_count} 次），"
+                f"且线条被切断（发声占比 {sounding_ratio * 100:.0f}%）——跳进 + 断奏会听成"
+                "一串孤立的尖峰。请先看「发声占比 / 大跳频次」两条提示；"
+                "若是单轨多声部的钢琴/编曲文件，本轨指标不可信，需先按音区拆声部")
         elif step_ratio < 0.6:
             suggestions.append(f"级进占比偏低（{step_ratio * 100:.0f}%），建议多数音程用大二度以内的级进，让旋律更可唱")
     if unique_durs < 3:
@@ -1057,6 +1255,53 @@ def cmd_analyze(args):
         suggestions.append(f"只有 {rest_count} 处休止，建议每 4 小节至少 2 处明显停顿")
     if motif_reused == 0 and len(pitches) >= 8:
         suggestions.append("缺少动机重复：旋律像流水账，建议设计 2-5 音动机并发展（重复/模进/变奏）")
+
+    # ── 线条类建议（情感/结构的主要载体）──
+    # 阈值来自跨样本实测（9 首人写含两首贝多芬名作 vs 5 首机写），属起点而非标准；
+    # 全部只作提示，不参与放行判定。
+    if total_moves >= 8 and not style_exempt:
+        if scalar_run_mean >= 1.6 and scalar_run_max >= 5:
+            suggestions.append(
+                f"旋律以连续音阶跑动为主（平均 {scalar_run_mean:.1f} 音/段，最长 {scalar_run_max} 音）——"
+                "这是「练习曲」听感的来源。人写名作的音阶跑动均长在 1.05–1.30。"
+                "建议用邻音摆动、回返音型、跳进后反向解决来替代长音阶，"
+                "音阶只作经过与连接（规则 1 的例外：动机驱动优先于级进占比）")
+        if leaps_per_min > 60:
+            suggestions.append(
+                f"大跳频率达 {leaps_per_min:.0f} 次/分钟（好作品多在 25–51，尖峰式 lead 可达 87）——"
+                "旋律会变成一串孤立的尖峰。建议把大跳留给乐句的顶点，其余位置用级进连接")
+        # 刻意不设「大跳解决率」提示：实测该指标方向是反的——
+        # 机写 96–100%（级进型旋律的跳进都会被后一个级进"接住"），人写 4–42%
+        # （琶音/音型化写法里跳进多同向）。拿它提示会把用户推向机写特征。
+        # 该值只在 details.leap_resolve_rate 里作为信息项输出。
+        if desc_mean > asc_mean * 1.2 and desc_mean - asc_mean >= 1.0:
+            suggestions.append(
+                f"下行平均音程（{desc_mean:.1f} 半音）明显大于上行（{asc_mean:.1f}）——"
+                "听感会「掉下去」。人写参照是对称或下行更小（3.3 / 3.5）")
+        if span > 0 and sounding_ratio < 0.8:
+            suggestions.append(
+                f"发声占比仅 {sounding_ratio * 100:.0f}%（人写参照 86%，名作可达 117%）——"
+                f"有约 {(1 - min(1.0, sounding_ratio)) * 100:.0f}% 的时间是静音，旋律被切断。"
+                "大跳 + 断奏 + 静音三者叠加会失去线条感，建议延长时值或缩短过长的空隙")
+    # 素材复读：连续 4 小节内出现完全相同的音高串
+    bars = {}
+    for n in srt:
+        bars.setdefault(int(float(n["start_beat"]) // 4), []).append(int(n["pitch"]))
+    sig = []
+    for b in sorted(bars):
+        sig.append((b, tuple(bars[b])))
+    for i in range(len(sig)):
+        for j in range(i + 1, min(i + 4, len(sig))):
+            if sig[i][1] == sig[j][1] and len(sig[i][1]) >= 3:
+                suggestions.append(
+                    f"第 {sig[i][0] + 1} 与第 {sig[j][0] + 1} 小节音高串完全相同（{len(sig[i][1])} 音）——"
+                    "4 小节内出现原样复读会让结构听起来在原地踏步。"
+                    "重复时至少变一个维度（音高走向 / 节奏 / 力度 / 落点）")
+                break
+        else:
+            continue
+        break
+
 
     out_of_scale = None
     if args.key_root:
@@ -1082,35 +1327,47 @@ def cmd_analyze(args):
     structure_info, structure_sugs, structure_score = _analyze_structure(srt, key_pc)
     suggestions.extend(structure_sugs)
 
-    # ── 评分（总分 10）：基础分降到 2.0，级进占比升为核心指标 ──
+    # ── 评分（总分 10）──
+    # 2026-09 调整：级进占比从 2.5 降到 1.5，让出的权重给「线条连续性」。
+    # 原因：级进占比一度是权重最大的维度，直接导致生成器写出「音阶练习曲」——
+    # 实测机写的音阶跑动均长 1.53–2.00，而人写名作是 1.05–1.30。
+    # 线条连续性（发声占比 / 大跳解决率 / 大跳频次）才是感情与结构的主要载体。
     score = 2.0
     if strong_total > 0:
         score += min(1.5, strong_rate * 1.5)  # 规则 2：强拍和弦音（基础正确性）
     elif chord_tone_total > 0:
         score += min(1.5, rate * 1.5)
     if style_exempt:
-        score += 1.25  # 跳进型风格：级进占比中性
+        score += 0.75  # 跳进型风格：级进占比中性
     elif step_ratio >= 0.6:
-        score += 2.5  # 级进占比 ≥60% 拿满（规则 5，可唱性核心）
+        score += 1.5  # 级进占比（规则 5）—— 从 2.5 降至 1.5，不再一家独大
     elif step_ratio >= 0.4:
-        score += 1.5
+        score += 0.9
+    elif _is_figurative(sounding_ratio, step_count):
+        score += 0.9  # 跳进为主但线条连续且不密集：琶音/音型化写法，属合法风格
     else:
-        score += 0.5  # 严重断裂
+        score += 0.3
     score += min(1.5, unique_durs / 3)
     score += min(1.0, vel_spread / 20)
     score += min(1.0, max(0.0, 1.0 - back_to_back / len(all_notes)) * 2)
     score += 0.5 if motif_reused > 0 else 0.0  # 动机发展（规则 1）
+    score += _continuity_points(sounding_ratio, leap_resolve_rate, leaps_per_min,
+                                scalar_run_mean, len(big_idx)) * 0.4
 
-    # 旋律断裂惩罚：级进占比 <40%（跳进为主）是机器味强信号
-    if not style_exempt and total_moves >= 6 and step_ratio < 0.4:
+    # 「旋律断裂」的判罚必须同时满足「跳进为主」与「线条被切断」。
+    # 只看级进占比会误伤琶音/音型化写法：实测《月光一》第一乐章级进仅 18%，
+    # 但其发声占比 117%（音与音叠着、线条完全连续），是合法的织体写法而非断裂。
+    broken_line = (not style_exempt and total_moves >= 6 and step_ratio < 0.4
+                   and not _is_figurative(sounding_ratio, step_count))
+    if broken_line:
         score -= 2.0
     # 跳进过度惩罚：跳进是级进的 2 倍以上
-    if not style_exempt and total_moves >= 6 and leap_count > step_count * 2:
+    if not style_exempt and total_moves >= 6 and leap_count > step_count * 2 and broken_line:
         score -= 1.5
 
     score = max(0.0, min(10.0, round(score)))
 
-    # ── 子分：技术分（规则 2/3/4/7 机械正确性）与音乐性分（规则 1/5 旋律性）──
+    # ── 子分：技术分（规则 2/3/4/7 机械正确性）与音乐性分（规则 1/5 + 线条）──
     # 拆成两栏，避免「技术指标刷分」掩盖旋律断裂，两者都需达标才放行
     tech = 0.0
     if strong_total > 0:
@@ -1122,23 +1379,36 @@ def cmd_analyze(args):
     tech += min(2.5, max(0.0, 1.0 - back_to_back / len(all_notes)) * 2 * 2.5)  # 呼吸空间
     tech = round(min(10.0, tech), 1)
 
+    # 音乐性分 = 级进占比（降权到 3.5）+ 线条连续性（3.5，新增）+ 动机发展（3.0）
     music = 0.0
     if style_exempt:
-        music += 4.0  # 跳进型风格中性
+        music += 2.5  # 跳进型风格中性
     elif step_ratio >= 0.6:
-        music += 6.0
+        music += 3.5  # 从 6.0 降至 3.5：级进占比不再决定"音乐性"
     elif step_ratio >= 0.4:
-        music += 3.5
+        music += 2.0
     else:
-        music += 1.0
-    music += 4.0 if motif_reused > 0 else 0.0  # 动机发展
-    if not style_exempt and total_moves >= 6 and step_ratio < 0.4:
-        music -= 2.0  # 旋律断裂
-    if not style_exempt and total_moves >= 6 and leap_count > step_count * 2:
+        music += 0.5
+    music += _continuity_points(sounding_ratio, leap_resolve_rate, leaps_per_min,
+                                scalar_run_mean, len(big_idx))
+    music += 3.0 if motif_reused > 0 else 0.0  # 动机发展（从 4.0 降至 3.0）
+    if broken_line:
+        music -= 2.0  # 旋律断裂（跳进为主 **且** 线条被切断）
+    if not style_exempt and total_moves >= 6 and leap_count > step_count * 2 and broken_line:
         music -= 1.5  # 跳进过度
     music = round(max(0.0, min(10.0, music)), 1)
 
     passed = tech >= 6.0 and music >= 6.0
+
+    baseline_block = None
+    if getattr(args, "baseline", None):
+        try:
+            baseline_block = _baseline_compare(all_notes, args.baseline)
+        except Exception as e:                      # 基线缺失/损坏不该让 analyze 失败
+            baseline_block = {"error": f"基线对照不可用（{e}）——"
+                                       f"不影响本次诊断的其余部分；"
+                                       f"如需恢复请确认 reference/human-baseline.json 与 "
+                                       f"calibrate.py 同在包内"}
 
     print(json.dumps({
         "score": score,
@@ -1147,6 +1417,7 @@ def cmd_analyze(args):
         "structure_score": structure_score,
         "passed": passed,
         "summary": "优秀" if score >= 8 else "良好" if score >= 6 else "一般" if score >= 4 else "需要改进",
+        **({"baseline": baseline_block} if baseline_block else {}),
         "details": {
             "analyzed_track": analysis_tracks[0]["name"] if len(analysis_tracks) == 1 else "全部音轨",
             "analyzed_notes": len(all_notes),
@@ -1164,6 +1435,18 @@ def cmd_analyze(args):
             "step_ratio": f"{step_ratio * 100:.0f}%",
             "leap_step_ratio": f"{leap_count / step_count:.1f}" if step_count else "∞",
             "motif_reuse": motif_reused,
+            # 线条类指标（数值型，新增）：感情与结构的主要载体
+            "sounding_ratio": round(sounding_ratio, 3),
+            "leaps_per_min": round(leaps_per_min, 1),
+            "leap_resolve_rate": (round(leap_resolve_rate, 3)
+                                  if leap_resolve_rate is not None else None),
+            "asc_mean": round(asc_mean, 2),
+            "desc_mean": round(desc_mean, 2),
+            "scalar_run_mean": round(scalar_run_mean, 2),
+            "scalar_run_max": scalar_run_max,
+            "continuity_points": round(
+                _continuity_points(sounding_ratio, leap_resolve_rate, leaps_per_min,
+                                   scalar_run_mean, len(big_idx)), 2),
             "chord_tone_rate": f"{rate * 100:.0f}%" if chord_tone_total > 0 else "无和弦定义",
             "strong_beat_chord_tone_rate": f"{strong_rate * 100:.0f}%" if strong_total > 0 else "无强拍数据",
             "out_of_scale": out_of_scale,
@@ -1354,6 +1637,9 @@ def build_parser():
     p.add_argument("--track", default=None, help="按名称指定评分音轨（默认取平均音高最高的旋律轨）")
     p.add_argument("--all-tracks", action="store_true", help="合并全部音轨评分（旧行为）")
     p.add_argument("--style", default="melodic", help="风格：melodic(默认) 或 jazz/arpeggio/blues/edm/lofi 豁免跳进约束")
+    p.add_argument("--baseline", nargs="?", const="auto", default=None,
+                   help="对照人写语料分位数（描述性，不参与判定）；省略路径时用包内 "
+                        "reference/human-baseline.json")
 
     p = sub.add_parser("compare", help="风格锚定：产出 song.json 与参考 .mid 做风格参数对比")
     p.add_argument("--input", required=True, help="产出 song.json 路径，'-' 读 stdin")
