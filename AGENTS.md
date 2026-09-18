@@ -72,7 +72,7 @@ aria-roll roll --input <song.json 或 x.mid> [--output r.html] [--format html|sv
 
 ### aria-mcp — MCP 服务端（跨 Agent 适配层）
 
-把上面三个工具连同知识库包装成 MCP 服务端，使**任何支持 MCP 的客户端**都能调用 Aria——包括没有 shell、也读不到提示词的 GUI 类 Agent。零依赖：手写 stdio JSON-RPC 2.0，不引官方 SDK，无需 pip 安装。
+把上面三个工具（aria-midi / aria-decode / aria-report；aria-roll 未包装）连同知识库包装成 MCP 服务端，使**任何支持 MCP 的客户端**都能调用 Aria——包括没有 shell、也读不到提示词的 GUI 类 Agent。零依赖：手写 stdio JSON-RPC 2.0，不引官方 SDK，无需 pip 安装。
 
 暴露 11 个 tools（`scale_list` / `chord_tones` / `snap_pitches` / `suggest_scale` / `validate_song` / `analyze_song` / `generate_midi` / `inspect_midi` / `decode_midi` / `compare_style` / `report_midi`）与 18 个 resources（`skills/` 下全部 Markdown，按需拉取）。
 

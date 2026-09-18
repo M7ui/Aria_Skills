@@ -1,6 +1,6 @@
 # Aria — 便携音乐技能包
 
-> 给 AI Agent 用的音乐能力包：**2 个技能 + 4 个零依赖工具**。
+> 给 AI Agent 用的音乐能力包：**2 个技能 + 5 个零依赖工具**。
 > 让只会读写文本的编程 Agent 能作曲、能拆解 MIDI —— 全程离线，不装任何 pip 包。
 
 [简体中文](README.md) | [English](README.en.md)
@@ -82,7 +82,7 @@ python toolkits/aria-midi/aria_midi.py scale --root C4 --type major --list
 aria-midi generate --input 未寄出的信/song.json
 ```
 
-`install.py` 会把两个技能与四个工具包部署到 `~/.agents/`，不影响该目录下的其他内容。部署后可用 `Test-Path ~/.agents/skills/aria-compose/SKILL.md`（PowerShell）或 `ls ~/.agents/skills/aria-compose/SKILL.md` 验证。
+`install.py` 会把两个技能与五个工具包部署到 `~/.agents/`，不影响该目录下的其他内容。部署后可用 `Test-Path ~/.agents/skills/aria-compose/SKILL.md`（PowerShell）或 `ls ~/.agents/skills/aria-compose/SKILL.md` 验证。
 
 ## 项目布局与命名约定
 

@@ -1,6 +1,6 @@
 # Aria — A Portable Music Skill Pack
 
-> A music capability pack for AI agents: **2 skills + 4 zero-dependency tools**.
+> A music capability pack for AI agents: **2 skills + 5 zero-dependency tools**.
 > It lets a text-only coding agent compose music and dissect MIDI files — fully offline, no pip installs.
 
 [简体中文](README.md) | [English](README.en.md)
@@ -37,7 +37,7 @@ python toolkits/aria-midi/aria_midi.py scale --root C4 --type major --list
 aria-midi generate --input 未寄出的信/song.json
 ```
 
-`install.py` deploys the two skills and four toolkits into `~/.agents/` without touching anything else there. Verify with `Test-Path ~/.agents/skills/aria-compose/SKILL.md` (PowerShell) or `ls ~/.agents/skills/aria-compose/SKILL.md`.
+`install.py` deploys the two skills and five toolkits into `~/.agents/` without touching anything else there. Verify with `Test-Path ~/.agents/skills/aria-compose/SKILL.md` (PowerShell) or `ls ~/.agents/skills/aria-compose/SKILL.md`.
 
 ## Project Layout & Naming Convention
 
