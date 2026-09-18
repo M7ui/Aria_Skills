@@ -11,6 +11,8 @@
 - **零依赖执行层**：仅 Python 标准库（Python 3.8+），任何 Agent 可用 shell 直接调用
 - **JSON 进出 + 退出码契约**：`0 成功 / 1 数据错误 / 2 用法错误`，结果可编程判断
 - **质量闭环**：`validate --strict` 强制 0 错误，`analyze` 0–10 评分 + 中文改进建议，不达标不放行
+- **情感与线条检查**：`analyze` 额外给出**发声占比 / 音阶跑动均长 / 线条连续性 / 乐句终止音交替**
+  —— 这四项是"有没有感情"的主要载体，比音高选择更能反映听感（见 `composition-rules.md` §3.5）
 - **跨 Agent**：支持 MCP 的客户端（含无 shell 的 GUI Agent）可直接调用；支持 skills 扫描的工具可自动发现
 - **看得见听得见**：`aria-roll` 把产物渲染成自包含 HTML 钢琴卷帘，双击即看、按播放即听 —— 不必再拉进 DAW 启插件
 - **全流程离线**：音阶/和弦查表用内置 CLI 计算，不依赖网络与外部 API
@@ -231,7 +233,7 @@ Aria_Skills/
 ├── docs/                  # 分析报告：人机分析报告.md + measure.py（可复现测量脚本）
 ├── skills/
 │   ├── aria-compose/      # 作曲工作流：自然语言 → song.json → MIDI
-│   │   └── references/    #   composition-rules / pattern-library / melody-chord-writing / midi-schema / examples
+│   │   └── references/    #   composition-rules（含 §3.5 情感线与线条）/ pattern-library / melody-chord-writing / midi-schema / examples
 │   └── aria-music-theory/ # 乐理问答：音阶/和弦/进行 + 风格知识库（pop/EDM/jazz/tropical/techniques/g-house）
 └── toolkits/
     ├── aria-midi/         # 作曲主线 CLI            v1.3.0  51 用例
@@ -294,7 +296,10 @@ flowchart TB
 |------|------|
 | 生成的 MIDI 音轨名在 Windows 播放器里乱码？ | `generate` 默认 `--name-encoding auto`：Windows 中文系统用 GBK，其他平台用 UTF-8。可用 `--name-encoding` 覆盖 |
 | 音符不在 0.25 网格上？ | `validate` 非 strict 只警告，加 `--strict` 视为错误。`start_beat` / `duration` 必须是 0.25 的整数倍 |
-| `analyze` 分数低？ | 按 `suggestions` 里的中文建议改：强拍落和弦音、级进占比、力度弧线、节奏呼吸、时值多样 |
+| `analyze` 分数低？ | 按 `suggestions` 里的中文建议改：强拍落和弦音、力度弧线、节奏呼吸、时值多样 |
+| 分数不错但听着"没感情"？ | 看 `details` 的线条四项：`sounding_ratio` ≥0.8、`scalar_run_mean` ≤1.5、`continuity_points` ≥2.5、连奏率 ≥0.75。**分数只测"表达的参数"，线条才测"表达的组织"** |
+| 旋律像音阶练习曲？ | `scalar_run_mean` 偏高（>1.5）。别为了「级进占比 ≥60%」把旋律写成音阶；人写名作是 1.01–1.30，改成邻音摆动/回返音型（`composition-rules.md` §3.5.3） |
+| 琶音型旋律被判"旋律断裂、机器味明显"？ | 2026-09 起已修：跳进为主**且线条连续**会判为「属琶音/音型化写法——无需修改」。仍可用 `--style arpeggio` 显式豁免 |
 | 多轨作品 `analyze` 评分准吗？ | 默认只评旋律轨（平均音高最高的轨），避免伴奏轨污染；用 `--track` 指定、`--all-tracks` 合并全轨 |
 | 爵士 / 琶音旋律被误判跳进过多？ | 加 `--style jazz` / `arpeggio` / `blues` / `edm` / `lofi` 豁免级进占比约束 |
 | `aria-midi` 不是内部或外部命令 | `toolkits/aria-midi/bin` 未加入 PATH。改用完整 Python 路径，或把 `bin` 加入 PATH |
@@ -305,7 +310,7 @@ flowchart TB
 ## 自测
 
 ```bash
-python toolkits/aria-midi/tests/run_tests.py     # 51 个用例全绿
+python toolkits/aria-midi/tests/run_tests.py     # 59 个用例全绿
 python toolkits/aria-decode/tests/run_tests.py   # 22 个用例 35 项断言全绿
 python toolkits/aria-report/tests/run_tests.py   # 38 个用例 73 项断言全绿
 python toolkits/aria-roll/tests/run_tests.py     # 31 个用例 50 项断言全绿

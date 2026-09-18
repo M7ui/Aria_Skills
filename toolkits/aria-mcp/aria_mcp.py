@@ -235,6 +235,8 @@ def t_analyze_song(args):
             cmd += ["--track", str(args["track"])]
         if args.get("all_tracks"):
             cmd.append("--all-tracks")
+        if args.get("baseline"):
+            cmd.append("--baseline")          # 用包内预置的人写语料基线（无参数）
         return _run(ARIA_MIDI, cmd, _json_bytes(song), allow_nonzero=True)
     finally:
         if tmp and os.path.exists(tmp.name):
@@ -381,8 +383,12 @@ TOOLS = [
     },
     {
         "name": "analyze_song",
-        "description": ("旋律质量分析：0-10 评分（技术分/音乐性分/乐句结构分）+ 中文改进建议。"
-                        "放行门槛 score>=7 且 passed=true。低于 7 按 suggestions 改完重跑。"),
+        "description": ("旋律诊断（技术分/音乐性分/乐句结构分 + 细节指标 + 中文建议）。"
+                        "注意这是诊断不是闸门：总分在音符层面没有梯度（单个音移 ±7 半音分数不变），"
+                        "不要为了拉分改旋律。硬闸只有 validate_song。"
+                        "baseline=true 时额外返回本曲在人写语料分位数中的落点——"
+                        "只看 role=diagnostic 的三项，且只在两端都是病时才当问题；"
+                        "role=style / convention_dependent 一律不判（已知好作品会落在分布外）。"),
         "inputSchema": _schema({
             "song": _SONG,
             "chords": {"type": "object",
@@ -393,6 +399,8 @@ TOOLS = [
                       "description": "跳进型风格用 jazz/arpeggio 等显式豁免级进占比约束"},
             "track": {"type": "string", "description": "按名称指定评分音轨（默认取平均音高最高的旋律轨）"},
             "all_tracks": {"type": "boolean", "default": False},
+            "baseline": {"type": "boolean", "default": False,
+                         "description": "对照包内预置的人写语料分位数（POP909 300 首）"},
         }, ["song"]),
         "handler": t_analyze_song,
     },
@@ -613,8 +621,11 @@ def handle(msg):
                 },
                 "serverInfo": {"name": SERVER_NAME, "version": __version__},
                 "instructions": (
-                    "Aria 音乐技能包。写歌流程：scale_list/chord_tones 查表 → validate_song 校验 → "
-                    "analyze_song 评分(>=7 放行) → generate_midi 生成 → inspect_midi 回读自检。"
+                    "Aria 音乐技能包。写歌流程：scale_list/chord_tones 查表 → validate_song 校验"
+                    "（这是唯一的硬闸）→ analyze_song 诊断（可加 baseline 对照人写分位数）→ "
+                    "generate_midi 生成 → inspect_midi 回读自检。"
+                    "注意 analyze_song 的分数不参与放行：它在音符层面没有梯度，"
+                    "不要为了拉分改旋律；好不好听只能靠人耳，交付前务必回放试听。"
                     "知识库（作曲规则/模式库/风格技法）见 resources。"
                 ),
             })

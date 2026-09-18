@@ -1,0 +1,480 @@
+{
+ "source": "POP909 (ISMIR 2020, MIT) — 001-300 首，jsDelivr 镜像抓取 2026-09-18",
+ "songs_used": 300,
+ "songs_skipped": 0,
+ "generator": "aria-midi calibrate",
+ "window_beats": 4.0,
+ "note": "分位数来自真实人写语料，是「参照」不是「阈值」：已知好作品会落在分布之外（Wait Day 在 6 项指标上超出 p05~p95）。role=diagnostic 才可用于提示异常，role=style 禁止当判定，role=convention_dependent 连跨工具比较都不该做。名字里的 window 指 4 拍的分析窗口——语料没有可识别的真实小节，window_* 系列指标随窗口变化，改窗口需重跑标定。",
+ "roles": {
+  "breaths_per_beat": {
+   "role": "diagnostic",
+   "why": "换气密度（按拍，与窗口无关）：0 = 完全不换气（四拍），>0.45 = 碎到无法成句（霓虹夜行 0.50、晴朗日 0.66）；Wait Day 0.11 落在区间内"
+  },
+  "breaths_per_window": {
+   "role": "descriptive",
+   "why": "同上的窗口版本，仅便于阅读（×1 窗口 = 4 拍 = 一个 4/4 小节）"
+  },
+  "step_share": {
+   "role": "diagnostic",
+   "why": "过低 = 跳进碎片（霓虹夜行 0.38 < p05），过高 = 音阶练习曲（晴朗日 0.92 > p95）"
+  },
+  "breath_position_consistency": {
+   "role": "diagnostic",
+   "why": "0 = 呼吸位置完全随机（四拍）；按固定 4 拍网格算，与窗口解耦"
+  },
+  "window_ambitus_ratio": {
+   "role": "descriptive",
+   "why": "单窗口音域占比；描述用，随窗口变化（窗口变宽必然变大）"
+  },
+  "window_peak_alternation": {
+   "role": "style",
+   "why": "Wait Day 0.73 与晚归 0.73 都 > p95，不具判别力——反映「音区问答」手法的有无"
+  },
+  "opening_direction_concentration": {
+   "role": "style",
+   "why": "Wait Day 0.75 与三首机写都 > p95，不具判别力"
+  },
+  "opening_interval_concentration": {
+   "role": "style",
+   "why": "Wait Day 0.50 > p95；是个人起句习惯"
+  },
+  "opening_kinds_ratio": {
+   "role": "descriptive",
+   "why": "起句型的分散度"
+  },
+  "cog_drift": {
+   "role": "style",
+   "why": "全曲重心走向；Wait Day -1.83 < p05（下沉），机写全部在区间内——个人选择"
+  },
+  "cog_slope": {
+   "role": "style",
+   "why": "同上，按小节计的斜率"
+  },
+  "tonic_ending_rate": {
+   "role": "style",
+   "why": "Wait Day 0.58 与四拍 0.50 都 > p95；不具判别力"
+  },
+  "long_note_count": {
+   "role": "style",
+   "why": "长音数量；Wait Day 1 首 < p05，POP909 中位 14"
+  },
+  "longest_note_is_last": {
+   "role": "style",
+   "why": "最长音是否在末尾"
+  },
+  "final_note_duration": {
+   "role": "style",
+   "why": "末音时值"
+  },
+  "asc_mean": {
+   "role": "descriptive",
+   "why": "上行平均音程"
+  },
+  "desc_mean": {
+   "role": "descriptive",
+   "why": "下行平均音程"
+  },
+  "desc_minus_asc": {
+   "role": "descriptive",
+   "why": "POP909 中位 -0.27（下行略小），Wait Day +0.33 在 p75~p95 之间——倾向而非定律"
+  },
+  "span": {
+   "role": "style",
+   "why": "音域；Wait Day 12 < p05，窄音域是个人选择"
+  },
+  "pitch_class_count": {
+   "role": "descriptive",
+   "why": "用到的音级数"
+  },
+  "pentatonic_rate": {
+   "role": "descriptive",
+   "why": "无判别力：所有作品都在 0.62–0.71"
+  },
+  "diatonic_rate": {
+   "role": "descriptive",
+   "why": "调内率"
+  },
+  "duration_kinds": {
+   "role": "convention_dependent",
+   "why": "量的是量化精度（POP909 未量化，中位 76 种）"
+  },
+  "top_duration_share": {
+   "role": "convention_dependent",
+   "why": "POP909 中位 0.079 vs Wait Day 0.789 —— 量的是量化习惯，不是节奏语汇"
+  },
+  "onset_grid": {
+   "role": "convention_dependent",
+   "why": "起音落在多少个拍内位置上；受量化影响"
+  },
+  "legato_rate": {
+   "role": "convention_dependent",
+   "why": "POP909 中位 0.007 vs Wait Day 0.93 —— 相差两个数量级，量的是音符落点习惯"
+  },
+  "velocity_kinds": {
+   "role": "convention_dependent",
+   "why": "导出时是否拉平力度（本地 9 首里 5 首被拉平）"
+  },
+  "velocity_spread": {
+   "role": "convention_dependent",
+   "why": "同上"
+  }
+ },
+ "metrics": {
+  "asc_mean": {
+   "p05": 2.4928,
+   "p25": 2.9221,
+   "p50": 3.2302,
+   "p75": 3.6731,
+   "p95": 4.2203,
+   "mean": 3.3001
+  },
+  "breath_position_consistency": {
+   "p05": 0.1236,
+   "p25": 0.1787,
+   "p50": 0.25,
+   "p75": 0.4454,
+   "p95": 1.0,
+   "mean": 0.3655
+  },
+  "breath_share_strong": {
+   "p05": 0.0302,
+   "p25": 0.1538,
+   "p50": 0.2677,
+   "p75": 0.5867,
+   "p95": 1.0,
+   "mean": 0.3995
+  },
+  "breaths_per_beat": {
+   "p05": 0.0026,
+   "p25": 0.0148,
+   "p50": 0.1462,
+   "p75": 0.2654,
+   "p95": 0.5009,
+   "mean": 0.1718
+  },
+  "breaths_per_window": {
+   "p05": 0.0104,
+   "p25": 0.0587,
+   "p50": 0.582,
+   "p75": 1.0482,
+   "p95": 1.9783,
+   "mean": 0.6818
+  },
+  "cog_drift": {
+   "p05": -1.4651,
+   "p25": 1.2192,
+   "p50": 2.6844,
+   "p75": 4.6174,
+   "p95": 8.1257,
+   "mean": 2.9402
+  },
+  "cog_slope": {
+   "p05": -0.0164,
+   "p25": 0.0159,
+   "p50": 0.0377,
+   "p75": 0.0713,
+   "p95": 0.1463,
+   "mean": 0.0471
+  },
+  "desc_mean": {
+   "p05": 2.3225,
+   "p25": 2.669,
+   "p50": 2.9476,
+   "p75": 3.2593,
+   "p95": 3.8817,
+   "mean": 3.0063
+  },
+  "desc_minus_asc": {
+   "p05": -1.3005,
+   "p25": -0.6405,
+   "p50": -0.2708,
+   "p75": 0.0812,
+   "p95": 0.6072,
+   "mean": -0.2938
+  },
+  "diatonic_rate": {
+   "p05": 0.6364,
+   "p25": 1.0,
+   "p50": 1.0,
+   "p75": 1.0,
+   "p95": 1.0,
+   "mean": 0.9385
+  },
+  "duration_kinds": {
+   "p05": 16.0,
+   "p25": 38.0,
+   "p50": 76.0,
+   "p75": 105.0,
+   "p95": 154.0,
+   "mean": 77.0267
+  },
+  "final_note_duration": {
+   "p05": 0.6451,
+   "p25": 2.1973,
+   "p50": 3.2895,
+   "p75": 4.5213,
+   "p95": 8.2479,
+   "mean": 3.9463
+  },
+  "legato_rate": {
+   "p05": 0.0,
+   "p25": 0.0,
+   "p50": 0.0072,
+   "p75": 0.4141,
+   "p95": 0.7669,
+   "mean": 0.1783
+  },
+  "long_note_count": {
+   "p05": 1.0,
+   "p25": 6.0,
+   "p50": 14.0,
+   "p75": 24.0,
+   "p95": 43.0,
+   "mean": 16.89
+  },
+  "longest_note_is_last": {
+   "p05": 0.0,
+   "p25": 0.0,
+   "p50": 0.0,
+   "p75": 1.0,
+   "p95": 1.0,
+   "mean": 0.35
+  },
+  "onset_grid": {
+   "p05": 2.95,
+   "p25": 4.0,
+   "p50": 5.0,
+   "p75": 9.0,
+   "p95": 21.05,
+   "mean": 9.0133
+  },
+  "opening_direction_concentration": {
+   "p05": 0.2089,
+   "p25": 0.2679,
+   "p50": 0.3213,
+   "p75": 0.3981,
+   "p95": 0.5205,
+   "mean": 0.3434
+  },
+  "opening_interval_concentration": {
+   "p05": 0.1081,
+   "p25": 0.1487,
+   "p50": 0.1905,
+   "p75": 0.2597,
+   "p95": 0.458,
+   "mean": 0.2234
+  },
+  "opening_kinds_ratio": {
+   "p05": 0.0731,
+   "p25": 0.1014,
+   "p50": 0.125,
+   "p75": 0.1522,
+   "p95": 0.1916,
+   "mean": 0.1308
+  },
+  "pentatonic_rate": {
+   "p05": 0.4545,
+   "p25": 0.7143,
+   "p50": 0.7143,
+   "p75": 0.8333,
+   "p95": 1.0,
+   "mean": 0.7323
+  },
+  "pitch_class_count": {
+   "p05": 5.0,
+   "p25": 6.0,
+   "p50": 7.0,
+   "p75": 7.0,
+   "p95": 11.0,
+   "mean": 7.14
+  },
+  "span": {
+   "p05": 14.0,
+   "p25": 17.0,
+   "p50": 18.0,
+   "p75": 21.0,
+   "p95": 26.0,
+   "mean": 18.71
+  },
+  "step_share": {
+   "p05": 0.702,
+   "p25": 0.7682,
+   "p50": 0.8176,
+   "p75": 0.8557,
+   "p95": 0.9075,
+   "mean": 0.8109
+  },
+  "tonic_ending_rate": {
+   "p05": 0.0,
+   "p25": 0.0952,
+   "p50": 0.1689,
+   "p75": 0.2396,
+   "p95": 0.392,
+   "mean": 0.1777
+  },
+  "top_duration_share": {
+   "p05": 0.0239,
+   "p25": 0.0369,
+   "p50": 0.0794,
+   "p75": 0.3695,
+   "p95": 0.5868,
+   "mean": 0.2037
+  },
+  "velocity_kinds": {
+   "p05": 10.0,
+   "p25": 15.75,
+   "p50": 22.0,
+   "p75": 33.0,
+   "p95": 44.05,
+   "mean": 24.4167
+  },
+  "velocity_spread": {
+   "p05": 17.0,
+   "p25": 34.0,
+   "p50": 48.0,
+   "p75": 59.0,
+   "p95": 72.05,
+   "mean": 47.04
+  },
+  "window_ambitus_ratio": {
+   "p05": 0.1725,
+   "p25": 0.2639,
+   "p50": 0.3234,
+   "p75": 0.3828,
+   "p95": 0.479,
+   "mean": 0.325
+  },
+  "window_peak_alternation": {
+   "p05": 0.2,
+   "p25": 0.3333,
+   "p50": 0.4406,
+   "p75": 0.5487,
+   "p95": 0.7202,
+   "mean": 0.4496
+  }
+ },
+ "plan_metrics": {
+  "breath_pos_in_phrase": {
+   "p05": 0.0,
+   "p25": 0.4383,
+   "p50": 0.535,
+   "p75": 0.6271,
+   "p95": 0.7521,
+   "mean": 0.4772
+  },
+  "breath_share": {
+   "p05": 0.0,
+   "p25": 0.1226,
+   "p50": 0.8214,
+   "p75": 0.95,
+   "p95": 1.0,
+   "mean": 0.5759
+  },
+  "climax_position": {
+   "p05": 0.1249,
+   "p25": 0.2747,
+   "p50": 0.3596,
+   "p75": 0.5654,
+   "p95": 0.9513,
+   "mean": 0.4426
+  },
+  "energy_fluctuation": {
+   "p05": 0.4808,
+   "p25": 0.9027,
+   "p50": 1.1415,
+   "p75": 1.2964,
+   "p95": 1.5854,
+   "mean": 1.1005
+  },
+  "motif_recurrence": {
+   "p05": 0.5714,
+   "p25": 0.7614,
+   "p50": 0.8667,
+   "p75": 0.9474,
+   "p95": 1.0,
+   "mean": 0.8452
+  },
+  "phrase_len_bars": {
+   "p05": 3.8,
+   "p25": 3.9,
+   "p50": 3.9661,
+   "p75": 4.0,
+   "p95": 4.0,
+   "mean": 3.943
+  },
+  "phrase_travel_max": {
+   "p05": 7.0,
+   "p25": 10.0,
+   "p50": 12.0,
+   "p75": 14.0,
+   "p95": 17.0,
+   "mean": 12.2467
+  },
+  "phrase_travel_mean": {
+   "p05": 2.8094,
+   "p25": 4.4181,
+   "p50": 5.7247,
+   "p75": 6.9464,
+   "p95": 9.2508,
+   "mean": 5.7737
+  },
+  "phrase_travel_span_ratio": {
+   "p05": 0.1834,
+   "p25": 0.2723,
+   "p50": 0.343,
+   "p75": 0.4241,
+   "p95": 0.5907,
+   "mean": 0.3559
+  },
+  "section_non4_share": {
+   "p05": 0.0,
+   "p25": 0.0,
+   "p50": 0.0323,
+   "p75": 0.0588,
+   "p95": 0.0769,
+   "mean": 0.0314
+  }
+ },
+ "plan_metric_roles": {
+  "phrase_len_bars": {
+   "role": "descriptive",
+   "why": "乐句长度（本工具按 4 小节切）"
+  },
+  "phrase_travel_mean": {
+   "role": "diagnostic",
+   "why": "每句「起音→目标音」的平均音程（半音）：过大=每句都在大跳，过小=句子没有方向"
+  },
+  "phrase_travel_max": {
+   "role": "descriptive",
+   "why": "最远的一句走了多少半音"
+  },
+  "phrase_travel_span_ratio": {
+   "role": "diagnostic",
+   "why": "句内行程 / 全曲音域：接近 1 = 每句都跑遍全场（无音区层级）"
+  },
+  "breath_share": {
+   "role": "diagnostic",
+   "why": "有呼吸点的乐句占比：0 = 全曲不换气"
+  },
+  "breath_pos_in_phrase": {
+   "role": "descriptive",
+   "why": "呼吸点落在句内的相对位置（0=句首，1=句尾）"
+  },
+  "motif_recurrence": {
+   "role": "diagnostic",
+   "why": "以同一手势起句的乐句占比：高 = 动机被反复使用（Wait Day 0.67）"
+  },
+  "climax_position": {
+   "role": "style",
+   "why": "全曲最高音的位置（占比）"
+  },
+  "section_non4_share": {
+   "role": "style",
+   "why": "长度不是 4 倍数的段落占比"
+  },
+  "energy_fluctuation": {
+   "role": "diagnostic",
+   "why": "逐段能量（密度）相对均值的起伏：0 = 一条平线"
+  }
+ }
+}
