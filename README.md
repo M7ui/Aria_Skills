@@ -10,13 +10,56 @@
 - **自然语言作曲**：说一句话，Agent 按五步工作流产出 `song.json` + 标准 MIDI 文件
 - **零依赖执行层**：仅 Python 标准库（Python 3.8+），任何 Agent 可用 shell 直接调用
 - **JSON 进出 + 退出码契约**：`0 成功 / 1 数据错误 / 2 用法错误`，结果可编程判断
-- **质量闭环**：`validate --strict` 强制 0 错误，`analyze` 0–10 评分 + 中文改进建议，不达标不放行
+- **质量闭环**：`validate --strict` 是唯一硬闸（网格/音域/力度/重叠）；
+  `analyze` 是**诊断不是闸门**（见「研究方向」），另可 `--baseline` 对照人写语料分位数
+- **计划先行**：`plan_check.py` 在写音符之前检查八层计划，写完再查音符有没有把计划做出来
 - **情感与线条检查**：`analyze` 额外给出**发声占比 / 音阶跑动均长 / 线条连续性 / 乐句终止音交替**
   —— 这四项是"有没有感情"的主要载体，比音高选择更能反映听感（见 `composition-rules.md` §3.5）
 - **跨 Agent**：支持 MCP 的客户端（含无 shell 的 GUI Agent）可直接调用；支持 skills 扫描的工具可自动发现
 - **看得见听得见**：`aria-roll` 把产物渲染成自包含 HTML 钢琴卷帘，双击即看、按播放即听 —— 不必再拉进 DAW 启插件
 - **全流程离线**：音阶/和弦查表用内置 CLI 计算，不依赖网络与外部 API
 - **联网增强**：风格未知或需要真实案例时，用中英文模糊检索 2–3 轮，不指定网站，来源过质量门槛后才落入提示词
+
+## 研究方向：把检查从「音符表面」移到「结构决定」
+
+本包最初想解决的是「让 Agent 写出好听的旋律」，做法是给 `analyze` 加指标、用分数卡质量。
+三轮实测之后这条路被自己的数据否掉了，现在换了一条。
+
+### 已放弃：用统计指标评测音乐质量
+
+| 做法 | 实测结果 |
+|---|---|
+| 11 项指标打分，`score ≥ 7` 才放行 | **总分在音符层面没有梯度**：把一个旋律音在 ±7 半音内遍历 15 个候选，四拍恒 8.0、余温恒 9.0、未寄出的信恒 10.0——一分不动。零梯度 + 双值禁令 = 只能做约束满足 |
+| 找「人机判别特征」区分好坏 | 两个曾 100% 分离的特征被真实名作打掉：密度线粗糙度 ← 《月光》通篇三连音（恒定是刻意写法）；附点占比 ← 实为 `if i%3==2` 的代码指纹 |
+| 拿人类作品的分布当阈值 | 已知好作品本身就落在分布外：**Wait Day 在 6 项指标上超出人类 p05~p95**。按分布设闸，先毙掉的是好作品 |
+
+结论与文献一致：MGEval 的作者把指标定位为「变异度指标」而非质量排名；2025 年 ACM 综述的原话是
+「美学与艺术质量印象本质主观，因此很难、甚至不可能被客观逼近」。
+
+### 现在：约束结构，把判断还给耳朵
+
+| 层 | 管什么 | 工具 |
+|---|---|---|
+| **计划层** | 某个层级**有没有做决定**（曲式/调性/音区/织体/乐句目标/呼吸/骨架/动机） | `plan_check.py`，在写音符**之前** |
+| **实现层** | 音符有没有把计划做出来（骨架音/目标音/高潮/呼吸点/音区带/动机首次陈述） | `plan_check.py --song` |
+| **参照层** | 本曲在人写语料分位数里的落点（描述性，**不作判定**） | `analyze --baseline` |
+| **裁判** | 好不好听 | 人耳，用 `aria-roll` 出可播放 HTML |
+
+### 三条方法论纪律
+
+1. **任何指标进门之前，先在真实人写语料上量误杀率。** 300 首 POP909 实测打回三处规则：
+   「末句落主音」只有 29% 的真作品成立、「≥1/3 乐句有句内换气」37.7% 误杀、
+   「和声去重」是把输入缺失当成了作品缺陷。修完六道门误杀率 0%。
+2. **门只查「决定有没有做」，不查「决定做得好不好」。** 凡「统计位置／风格选择」类一律降为提示，
+   并在文档里写明为什么不能当门——`plan-schema.md` 的门/提示对照表就是这么长出来的。
+3. **被证伪的东西要留档。** `anti-formula.md` §5 记着 11 条已失效的特征与规则，
+   防止后来者重新踩进去。
+
+### 待验证
+
+- **计划先行的收益尚未证明**：目前只有一首是严格「先写计划再写音符」走出来的
+  （计划层 10/10、实现层 6/6），它与事后补计划作品的听感对比仍在进行。
+- **各指标与人评的相关性**（Spearman）还没测过——这一步需要听测数据。
 
 ## 环境要求
 
@@ -86,30 +129,39 @@ python toolkits/aria-midi/aria_midi.py inspect --input 未寄出的信/未寄出
 python toolkits/aria-midi/aria_midi.py scale --root A4 --type minor --list
 python toolkits/aria-midi/aria_midi.py scale --root G4 --type major --chord dom7
 
-# 2. 写 未寄出的信/song.json 与 未寄出的信/chords.json
-#    schema 见 skills/aria-compose/references/midi-schema.md
+# 2. 先写八层计划 plan.json（曲式/和声/音区/织体/乐句四列/骨架/能量/动机）
+#    字段与示例见 skills/aria-compose/references/plan-schema.md
+#    人写作品里提取的可执行语法见 skills/aria-compose/references/human-grammar.md
+python toolkits/aria-midi/plan_check.py --plan 未寄出的信/plan.json      # 计划层：门必须全过
 
-# 3. 严格校验：必须 ok=true 且 errors=[]
+# 3. 照着计划写 song.json 与 chords.json（schema 见 references/midi-schema.md）
+
+# 4. 严格校验：必须 ok=true 且 errors=[]（唯一硬闸）
 python toolkits/aria-midi/aria_midi.py validate --input 未寄出的信/song.json --strict
 
-# 4. 质量评分：score >= 7 且 passed=true 才放行；低于则按 suggestions 改完重跑第 3 步
-python toolkits/aria-midi/aria_midi.py analyze \
-    --input 未寄出的信/song.json --chords 未寄出的信/chords.json --key-root D4
+# 5. 查音符有没有把计划做出来（骨架音/目标音/高潮/呼吸点/音区带/动机）
+python toolkits/aria-midi/plan_check.py --plan 未寄出的信/plan.json --song 未寄出的信/song.json
 
-# 5. 生成 MIDI（--output 可省，由顶层 name 派生）
+# 6. 诊断 + 对照人写语料分位数（--baseline 只作参照，不参与放行）
+python toolkits/aria-midi/aria_midi.py analyze --input 未寄出的信/song.json --chords 未寄出的信/chords.json --key-root D4 --baseline
+
+# 7. 生成 MIDI 与回读自检（--output 可省，由顶层 name 派生）
 python toolkits/aria-midi/aria_midi.py generate --input 未寄出的信/song.json
-
-# 6. 回读自检：核对音符数 / BPM / 时长
 python toolkits/aria-midi/aria_midi.py inspect --input 未寄出的信/未寄出的信.mid
 ```
 
 每次修改 `song.json` 后必须重新执行 `validate --strict`，不能只改文件不校验。
 
-**评分放行条件**：`score >= 7` 且 `passed=true`（技术分与音乐性分都要 ≥6）；`structure_score >= 6` 检查乐句切分、轮廓复用、高潮位置与终止稳定。跳进型风格（爵士/琶音/蓝调/EDM/Lo-fi）用 `--style jazz` 等显式豁免级进占比约束。
+**放行条件**：`validate --strict` 0 错误（唯一硬闸）+ `plan_check` 计划层与实现层的门全过 +
+**人耳听过**。`analyze` 的分数**不参与放行**——它在音符层面没有梯度（见「研究方向」），
+只用来看 `details`、`suggestions` 与 `--baseline` 的落点。
+跳进型风格（爵士/琶音/蓝调/EDM/Lo-fi）可用 `--style jazz` 等显式豁免级进占比约束。
 
 ## 工具
 
-四个工具都只依赖标准库，JSON 进 JSON 出，退出码契约一致。看差异与选用：
+五个工具都只依赖标准库，JSON 进 JSON 出，退出码契约一致。另有三个独立脚本（同在 aria-midi 内）：
+`plan_check.py`（计划层检查，见「研究方向」）、`calibrate.py`（用人写语料标定分位数）、
+`reference/human-baseline.json`（随包预置的标定结果，`analyze --baseline` 直接消费）。看差异与选用：
 
 ### aria-midi — 作曲主线
 
@@ -233,10 +285,15 @@ Aria_Skills/
 ├── docs/                  # 分析报告：人机分析报告.md + measure.py（可复现测量脚本）
 ├── skills/
 │   ├── aria-compose/      # 作曲工作流：自然语言 → song.json → MIDI
-│   │   └── references/    #   composition-rules（含 §3.5 情感线与线条）/ pattern-library / melody-chord-writing / midi-schema / examples
+│   │   └── references/    #   plan-schema（八层计划 + 门/提示划分）/ human-grammar（人写语法九条）
+│   │                      #   composition-rules（含 §3.5 情感线与线条）/ pattern-library / melody-chord-writing
+│   │                      #   / anti-formula（含 §5 已证伪清单）/ midi-schema / examples / web-research-guide
 │   └── aria-music-theory/ # 乐理问答：音阶/和弦/进行 + 风格知识库（pop/EDM/jazz/tropical/techniques/g-house）
 └── toolkits/
-    ├── aria-midi/         # 作曲主线 CLI            v1.3.0  51 用例
+    ├── aria-midi/         # 作曲主线 CLI + 计划检查 + 语料标定   v1.3.0  74 用例
+    │   ├── plan_check.py  #   计划层检查（八层结构 + 计划/音符一致性 + --derive 反推）
+    │   ├── calibrate.py   #   用人写语料标定指标分位数（零依赖，通用语料契约）
+    │   └── reference/     #   human-baseline.json（POP909 300 首，随包预置）
     ├── aria-decode/       # MIDI → JSON 无损解码      v1.0.1  22 用例 35 断言
     ├── aria-report/       # 批量逆向分析报告          v1.0.0  38 用例 73 断言
     ├── aria-roll/         # 钢琴卷帘渲染（HTML/SVG）    v1.0.0  31 用例 50 断言
@@ -310,7 +367,7 @@ flowchart TB
 ## 自测
 
 ```bash
-python toolkits/aria-midi/tests/run_tests.py     # 59 个用例全绿
+python toolkits/aria-midi/tests/run_tests.py     # 74 个用例全绿
 python toolkits/aria-decode/tests/run_tests.py   # 22 个用例 35 项断言全绿
 python toolkits/aria-report/tests/run_tests.py   # 38 个用例 73 项断言全绿
 python toolkits/aria-roll/tests/run_tests.py     # 31 个用例 50 项断言全绿

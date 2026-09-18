@@ -127,7 +127,7 @@ python toolkits/aria-midi/aria_midi.py scale --root C4 --type major --chord dom7
 # 3. 严格校验，必须 ok=true 且 errors=[]
 python toolkits/aria-midi/aria_midi.py validate --input song.json --strict
 
-# 4. 评分，score >= 7 且 passed=true 才放行；structure_score >= 6 检查乐句连贯性；
+# 4. 诊断：analyze 不参与放行（总分在音符层面无梯度）；--baseline 看人写分位数落点；
 #    不达标按 suggestions 修改后重跑（传 --key-root 才会检查终止稳定性）
 python toolkits/aria-midi/aria_midi.py analyze --input song.json --chords chords.json --key-root C4
 

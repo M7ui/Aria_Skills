@@ -169,7 +169,7 @@ aria-midi analyze --input song.json --style arpeggio      # 豁免跳进约束�
 - `technical_score` 技术分：强拍和弦音（≤3）+ 时值多样（≤2.5）+ 力度范围（≤2）+ 呼吸空间（≤2.5）——衡量「写对了没」
 - `musicality_score` 音乐性分：级进占比（≤3.5，**2026-09 从 6 降至 3.5**）
   + **线条连续性（≤3.5，新增）** + 动机发展（≤3.0），断裂/跳进过度另扣——衡量「好听吗」
-- `passed`：`technical ≥ 6 且 musicality ≥ 6` 才为 true，作为放行开关（比单一 `score ≥ 7` 更严格）
+- `passed`：`technical ≥ 6 且 musicality ≥ 6` 才为 true。**它不再是放行开关**——实测总分在音符层面没有梯度，放行只认 `validate --strict` + 计划检查 + 人耳
 
 ### 线条指标（2026-09 新增，details 内，数值型）
 

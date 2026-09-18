@@ -75,7 +75,7 @@ MCP 客户端普遍使用 `mcpServers` 这个键，但**外层文件名与键名
 ```
 scale_list / chord_tones 查表
       → validate_song（必须 0 errors）
-      → analyze_song（score >= 7 才放行）
+      → analyze_song（诊断；加 baseline=true 对照人写分位数，不参与放行）
       → generate_midi
       → inspect_midi 回读核对音符数/BPM
 ```
